@@ -7,7 +7,7 @@ from .fixtures import invalid_fixtures
 from .fixtures_current import (
     CHECK_KEYS, VALID, check, docker_unavailable, non_success, partial_manifest,
 )
-from .test_schemas import PERSISTED, load_registry
+from .test_schemas import DISCOVERY, PERSISTED, load_registry
 
 
 class CurrentSchemaTests(unittest.TestCase):
@@ -28,7 +28,7 @@ class CurrentSchemaTests(unittest.TestCase):
         self.assertFalse(self.validator(name).is_valid(value))
 
     def test_inventory_dialect_and_offline_references(self):
-        self.assertEqual(PERSISTED | {"common"}, set(self.by_name))
+        self.assertEqual(PERSISTED | DISCOVERY | {"common"}, set(self.by_name))
         self.assertEqual(PERSISTED, set(VALID))
         for name, schema in self.by_name.items():
             with self.subTest(schema=name):

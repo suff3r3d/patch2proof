@@ -8,6 +8,10 @@ tests. The full discovery command below also runs `tests/infrastructure/`, which
 tests the implemented artifact store and semantic validator. No runtime oracle
 or vulnerable target is executed.
 
+The suite also validates the CVE-led discovery request and result contracts.
+Those contracts describe a future pre-ingestion step; tests do not retrieve
+advisories or resolve real repositories.
+
 ## Docker-only workflow
 
 Run the commands below from the repository root in one shell. The pinned Python

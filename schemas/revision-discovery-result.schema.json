@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dacn:schema:revision-discovery-result",
+  "title": "Evidence-backed revision discovery result",
+  "description": "Candidate repository and commit pairs before patch ingestion; no candidate is a vulnerability verdict.",
+  "type": "object",
+  "required": ["request", "status", "candidates"],
+  "properties": {
+    "request": {"$ref": "urn:dacn:schema:cve-discovery-request"},
+    "status": {"enum": ["resolved", "ambiguous", "failed"]},
+    "candidates": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {"$ref": "#/$defs/candidate"}
+    },
+    "selected": {"$ref": "#/$defs/candidate"},
+    "failure_reason": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "resolved"}}, "required": ["status"]},
+      "then": {
+        "required": ["selected"],
+        "not": {"required": ["failure_reason"]},
+        "properties": {
+          "candidates": {"minItems": 1},
+          "selected": {
+            "properties": {
+              "checks": {
+                "properties": {
+                  "repository_matches_source": {"const": "passed"},
+                  "revisions_exist": {"const": "passed"},
+                  "vulnerable_precedes_fixed": {"const": "passed"},
+                  "patch_delta_nonempty": {"const": "passed"},
+                  "cve_link_supported": {"const": "passed"}
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "not": {"required": ["selected"]}
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "ambiguous"}}, "required": ["status"]},
+      "then": {"properties": {"candidates": {"minItems": 1}}, "required": ["failure_reason"]}
+    },
+    {
+      "if": {"properties": {"status": {"const": "failed"}}, "required": ["status"]},
+      "then": {"required": ["failure_reason"]}
+    }
+  ],
+  "$defs": {
+    "commit": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "source_evidence": {
+      "type": "object",
+      "required": ["kind", "url", "retrieved_at", "content_sha256"],
+      "properties": {
+        "kind": {"enum": ["cve_record", "advisory", "repository", "commit", "comparison"]},
+        "url": {"type": "string", "format": "uri", "pattern": "^https://"},
+        "retrieved_at": {"$ref": "urn:dacn:schema:common#/$defs/timestamp"},
+        "content_sha256": {"$ref": "urn:dacn:schema:common#/$defs/sha256"},
+        "artifact": {"$ref": "urn:dacn:schema:common#/$defs/artifact_ref"}
+      },
+      "additionalProperties": false
+    },
+    "checks": {
+      "type": "object",
+      "required": ["repository_matches_source", "revisions_exist", "vulnerable_precedes_fixed", "patch_delta_nonempty", "cve_link_supported"],
+      "properties": {
+        "repository_matches_source": {"$ref": "#/$defs/check_status"},
+        "revisions_exist": {"$ref": "#/$defs/check_status"},
+        "vulnerable_precedes_fixed": {"$ref": "#/$defs/check_status"},
+        "patch_delta_nonempty": {"$ref": "#/$defs/check_status"},
+        "cve_link_supported": {"$ref": "#/$defs/check_status"}
+      },
+      "additionalProperties": false
+    },
+    "check_status": {"enum": ["passed", "failed", "not_evaluated"]},
+    "candidate": {
+      "type": "object",
+      "required": ["repository_url", "vulnerable_commit", "fixed_commit", "fix_commit", "evidence", "checks"],
+      "properties": {
+        "repository_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+        "vulnerable_commit": {"$ref": "#/$defs/commit"},
+        "fixed_commit": {"$ref": "#/$defs/commit"},
+        "fix_commit": {"$ref": "#/$defs/commit"},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {"$ref": "#/$defs/source_evidence"}
+        },
+        "checks": {"$ref": "#/$defs/checks"},
+        "notes": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

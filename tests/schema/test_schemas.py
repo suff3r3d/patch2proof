@@ -16,6 +16,7 @@ PERSISTED = {
     "environment-spec", "build-record", "execution-record",
     "verification-result", "case-manifest",
 }
+DISCOVERY = {"cve-discovery-request", "revision-discovery-result"}
 
 
 def reject_duplicate_keys(pairs):
@@ -54,7 +55,7 @@ class SchemaTests(unittest.TestCase):
         )
 
     def test_inventory(self):
-        self.assertEqual(PERSISTED | {"common"}, set(self.by_name))
+        self.assertEqual(PERSISTED | DISCOVERY | {"common"}, set(self.by_name))
         self.assertEqual(PERSISTED, set(VALID))
         self.assertFalse(any((ROOT / "schemas").glob("[0-9]*")))
 
