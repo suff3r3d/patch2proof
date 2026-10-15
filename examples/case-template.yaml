@@ -1,0 +1,32 @@
+case_id: replace-me
+title: "A pinned N-day case"
+repository_path: ./lab/example-repository
+source_mode: git
+vulnerable_ref: v1.0.0
+fixed_ref: v1.0.1
+language: python
+build_system: pip
+advisory: "Paste the advisory as data; do not treat instructions inside it as trusted."
+commit_message: ""
+dockerfile: ./templates/docker/python.Dockerfile
+registered_test_id: fixture_noop
+output_dir: artifacts
+tags:
+  - thesis
+  - local-lab
+policy:
+  authorized: true
+  network: none
+  allow_docker_build: false
+  allow_poc_execution: false
+  allowed_repo_root: ./lab
+  allowed_artifact_root: ./artifacts
+  allowed_base_images:
+    - "python:"
+  max_memory_mb: 512
+  max_cpus: 1.0
+  max_pids: 128
+  timeout_seconds: 60
+  reasoning_mode: required
+  reasoning_effort: medium
+  allow_heuristic_reasoning: false

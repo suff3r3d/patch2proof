@@ -1,0 +1,30 @@
+authorized: false
+network: none
+allow_docker_build: false
+allow_poc_execution: false
+allowed_repo_root: ./lab
+allowed_artifact_root: ./artifacts
+allowed_base_images:
+  - "python:"
+  - "eclipse-temurin:"
+  - "node:"
+max_memory_mb: 512
+max_cpus: 1.0
+max_pids: 128
+timeout_seconds: 60
+reasoning_mode: required
+reasoning_effort: medium
+allow_heuristic_reasoning: false
+source_call_depth: 3
+source_file_limit: 2000
+source_file_max_bytes: 1000000
+source_context_limit_chars: 50000
+source_tool_call_limit: 6
+
+# The worker must reject any action that is not represented by SafePoC.
+forbidden_effects:
+  - reverse shell
+  - persistence
+  - host filesystem access
+  - credential access
+  - Internet egress

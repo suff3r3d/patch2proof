@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "patch2proof": "./src/patch2proof/graph.py:graph"
+  },
+  "env": ".env"
+}
