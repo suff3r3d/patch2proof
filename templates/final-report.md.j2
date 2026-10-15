@@ -1,0 +1,282 @@
+# Patch2Proof Security Research Report
+
+## 1. Case metadata
+
+| Field | Value |
+|---|---|
+| Case ID | `{{ report.case.case_id }}` |
+| Title | {{ report.case.title }} |
+| Language | `{{ report.case.language }}` |
+| Build system | `{{ report.case.build_system }}` |
+| Vulnerable ref | `{{ report.case.vulnerable_ref }}` |
+| Fixed ref | `{{ report.case.fixed_ref }}` |
+| Generated at | `{{ report.generated_at }}` |
+
+## 2. Executive summary
+
+This report is generated from a pinned source pair and a constrained SafePoC workflow. The result must be interpreted together with the validation status and evidence manifest below.
+
+{% if report.review %}
+**Verdict:** `{{ report.review.verdict }}`  
+**Confidence:** `{{ "%.2f"|format(report.review.confidence) }}`  
+**Rationale:** {{ report.review.rationale }}
+{% else %}
+**Verdict:** `not assessed`
+{% endif %}
+
+{% if report.validation and report.validation.simulation %}
+**Important:** this result came from a synthetic adapter and cannot confirm a real target.
+{% endif %}
+
+## 3. Hypotheses
+
+{% for hypothesis in report.hypotheses %}
+### {{ hypothesis.hypothesis_id }} — {{ hypothesis.title }}
+
+- Class: `{{ hypothesis.vulnerability_class }}`
+- Observation: {{ hypothesis.observation }}
+- Sink: `{{ hypothesis.sink or "not identified" }}`
+- Confidence: `{{ "%.2f"|format(hypothesis.confidence) }}`
+- Affected paths: {% for path in hypothesis.affected_paths %}`{{ path }}`{% if not loop.last %}, {% endif %}{% endfor %}
+- Evidence IDs: {% for evidence_id in hypothesis.evidence_ids %}`{{ evidence_id }}`{% if not loop.last %}, {% endif %}{% endfor %}
+
+{% if hypothesis.limitations %}
+Limitations:
+{% for limitation in hypothesis.limitations %}
+- {{ limitation }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+## 4. Agent reasoning record
+
+The records below are auditable decision summaries, not proof and not private chain-of-thought. Runtime evidence and the deterministic proof predicate remain authoritative.
+
+{% if report.reasoning %}
+{% for item in report.reasoning %}
+### {{ item.reasoning_id }}
+
+- Stage: `{{ item.stage }}`
+- Mode: `{{ item.mode }}`
+- Provider: `{{ item.provider }}`
+- Model: `{{ item.model or "not applicable" }}`
+- Reasoning effort: `{{ item.reasoning_effort or "not configured" }}`
+- Next action: `{{ item.next_action }}`
+- Decision rationale: {{ item.decision_rationale }}
+- Missing transitions: {% if item.missing_transitions %}{{ item.missing_transitions | join(", ") }}{% else %}none recorded{% endif %}
+- Uncertainty: {% if item.uncertainty %}{{ item.uncertainty | join("; ") }}{% else %}none recorded{% endif %}
+- Source-tool calls: {% if item.tool_calls %}{{ item.tool_calls | length }}{% else %}none{% endif %}
+{% if item.tool_calls %}
+{% for tool in item.tool_calls %}
+  - `{{ tool.query.kind }}` for `{{ tool.query.symbol or tool.query.path }}` on `{{ tool.query.revision }}` — `{{ tool.status }}`; evidence IDs: {% if tool.get("evidence_ids", []) %}`{{ tool.get("evidence_ids", []) | join("`, `") }}`{% else %}none{% endif %}
+{% endfor %}
+{% endif %}
+- Input SHA-256: `{{ item.input_sha256 }}`
+- Output SHA-256: `{{ item.output_sha256 }}`
+{% endfor %}
+{% else %}
+No agent reasoning artifact was produced. This is a configuration or preflight failure, not a finding.
+{% endif %}
+
+## 5. Patch and source investigation
+
+{% if report.source_context %}
+- Patch SHA-256: `{{ report.source_context.patch_sha256 }}`
+- Patch parser complete: {{ report.source_context.patch_complete }}
+- Patch hunks parsed: {{ report.source_context.hunk_count }}
+- Hunks mapped to source snapshots: {{ report.source_context.mapped_hunk_count }} / {{ report.source_context.hunk_count }}
+- Source context status: `{{ report.source_context.status }}`
+- Parser coverage: `{{ report.source_context.parser_coverage | tojson }}`
+
+### Changed symbols
+
+{% for item in report.source_context.changed_symbols %}
+- `{{ item.role }}` `{{ item.path }}:{{ item.line_start }}-{{ item.line_end }}` — `{{ item.qualified_name }}` via `{{ item.parser }}`
+{% else %}
+No callable symbol was resolved from the changed hunks.
+{% endfor %}
+
+### Caller paths
+
+{% for path in report.source_context.caller_paths %}
+- `{{ path.path_id }}`: {% for symbol in path.symbols %}`{{ symbol.qualified_name }}`{% if not loop.last %} → {% endif %}{% endfor %} at `{{ path.symbols[0].path }}:{{ path.call_site.line }}` (`{{ path.resolution }}`, confidence {{ "%.2f"|format(path.confidence) }}); evidence IDs: {% for evidence_id in path.evidence_ids %}`{{ evidence_id }}`{% if not loop.last %}, {% endif %}{% endfor %}
+{% else %}
+No caller path was resolved within the configured search budget.
+{% endfor %}
+
+### Callee paths
+
+{% for path in report.source_context.callee_paths %}
+- `{{ path.path_id }}`: {% for symbol in path.symbols %}`{{ symbol.qualified_name }}`{% if not loop.last %} → {% endif %}{% endfor %} at line {{ path.call_site.line }} (`{{ path.resolution }}`, confidence {{ "%.2f"|format(path.confidence) }}); evidence IDs: {% for evidence_id in path.evidence_ids %}`{{ evidence_id }}`{% if not loop.last %}, {% endif %}{% endfor %}
+{% else %}
+No callee definition was resolved within the configured search budget.
+{% endfor %}
+
+### Unresolved callee names
+
+{% for item in report.source_context.callee_candidates %}
+- `{{ item.source_symbol }}` calls `{{ item.target_name }}` at line {{ item.call_site.line }}; {{ item.resolution }}
+{% else %}
+None recorded.
+{% endfor %}
+
+### Missing source context
+
+{% for item in report.source_context.missing_context %}
+- {{ item }}
+{% else %}
+None recorded.
+{% endfor %}
+{% else %}
+No source investigation bundle was produced.
+{% endif %}
+
+## 6. Scope, advisory and impact boundary
+
+- Advisory: {{ report.case.advisory or "not supplied" }}
+- Patch/commit message: {{ report.case.commit_message or "not supplied" }}
+- Suggested vulnerability class: {% if report.hypotheses %}`{{ report.hypotheses[0].vulnerability_class }}`{% else %}not assessed{% endif %}
+- CVSS/production exploitability: not automatically asserted; require human review of the intended security property and deployment context.
+
+## 7. Docker environment
+
+{% if report.docker_spec %}
+```json
+{{ report.docker_spec | tojson(indent=2) }}
+```
+{% else %}
+No Docker plan was produced.
+{% endif %}
+
+### Image pair
+
+| Role | Tag | Digest | Built |
+|---|---|---|---|
+{% for image in report.images %}
+| {{ image.role }} | `{{ image.tag }}` | `{{ image.digest or "not-built" }}` | {{ image.built }} |
+{% endfor %}
+
+## 8. Reproduction contract and directed graph
+
+{% if report.vulnerability_contract %}
+```json
+{{ report.vulnerability_contract | tojson(indent=2) }}
+```
+{% else %}
+No executable vulnerability contract was produced.
+{% endif %}
+
+{% if report.reproduction_graph %}
+Graph ID: `{{ report.reproduction_graph.graph_id }}`  
+Graph revision: `{{ report.reproduction_graph.revision }}`  
+Uncovered edges: {{ report.reproduction_graph.uncovered_edge_ids | length }}
+{% endif %}
+
+{% if report.coverage %}
+### Coverage gates
+
+| Gate | Result |
+|---|---|
+| Static reachability | {{ report.coverage.static_reachability }} |
+| Dynamic reachability | {{ report.coverage.dynamic_reachability }} |
+| Semantic transition | {{ report.coverage.semantic_transition }} |
+| Counterfactual separation | {{ report.coverage.counterfactual_separation }} |
+| Repeatable | {{ report.coverage.repeatable }} |
+| Source-grounded | {{ report.coverage.source_grounded }} |
+{% endif %}
+
+## 9. SafePoC
+
+{% if report.safe_poc %}
+**Objective:** {{ report.safe_poc.objective }}
+
+**Oracle:** `{{ report.safe_poc.oracle }}`
+
+Actions:
+
+{% for action in report.safe_poc.actions %}
+1. `{{ action.op }}` → `{{ action.target }}`{% if action.expected %} (`{{ action.expected }}`){% endif %}
+{% endfor %}
+
+Allowed effects:
+
+{% for item in report.safe_poc.allowed_effects %}
+- {{ item }}
+{% endfor %}
+
+Forbidden effects:
+
+{% for item in report.safe_poc.forbidden_effects %}
+- {{ item }}
+{% endfor %}
+{% else %}
+No SafePoC was generated.
+{% endif %}
+
+## 10. Differential validation
+
+{% if report.validation %}
+```json
+{{ report.validation | tojson(indent=2) }}
+```
+{% else %}
+Validation was not executed.
+{% endif %}
+
+## 10. Attempts, typed feedback and skill memory
+
+{% if report.attempts %}
+| Attempt | Status | Skill | Failure class | Before graph | After graph |
+|---|---|---|---|---|---|
+{% for attempt in report.attempts %}
+| `{{ attempt.attempt_id }}` | {{ attempt.status }} | `{{ attempt.selected_skill_id or "-" }}` | `{{ attempt.failure_class or "-" }}` | `{{ attempt.before_graph_hash[:12] }}` | `{{ attempt.after_graph_hash[:12] or "-" }}` |
+{% endfor %}
+{% else %}
+No runtime attempt was recorded.
+{% endif %}
+
+{% if report.feedback %}
+### Feedback history
+
+{% for item in report.feedback %}
+- `{{ item.feedback_id }}`: `{{ item.failure_class }}`, missing `{{ item.missing_transition }}`, allowed repairs: {{ item.allowed_repairs | join(", ") }}
+{% endfor %}
+{% endif %}
+
+{% if report.skill_applications %}
+### Skill applications
+
+| Skill | Outcome | Counterfactual verified |
+|---|---|---|
+{% for item in report.skill_applications %}
+| `{{ item.skill_id }}` | {{ item.outcome }} | {{ item.counterfactual_verified }} |
+{% endfor %}
+{% endif %}
+
+## 11. Evidence
+
+| ID | Kind | Observation | Location | Version |
+|---|---|---|---|---|
+{% for item in report.evidence %}
+| `{{ item.evidence_id }}` | {{ item.kind }} | {{ item.observation }} | {% if item.path %}`{{ item.path }}`{% if item.line_start %}:{{ item.line_start }}{% endif %}{% else %}-{% endif %} | `{{ item.version or "-" }}` |
+{% endfor %}
+
+## 12. Proof bundle
+
+{% if report.proof_bundle %}
+**Claim status:** `{{ report.proof_bundle.claim_status }}`  
+**Bundle SHA-256:** `{{ report.proof_bundle.bundle_sha256 }}`  
+**Rule:** {{ report.proof_bundle.claim_rule }}
+{% else %}
+No proof bundle was produced.
+{% endif %}
+
+## 13. Reproduction limitations
+
+{% for limitation in report.limitations %}
+- {{ limitation }}
+{% endfor %}
+
+## 14. Remediation notes
+
+The final remediation recommendation must be reviewed against the pre-patch/post-patch diff and the application’s intended security property. Do not treat a crash-only or marker-only result as proof of production exploitability.
