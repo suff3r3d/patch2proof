@@ -72,9 +72,6 @@ class PackageValidator:
             issues.extend(diagnostics)
             if diagnostics:
                 continue
-            if record["schema_version"] != "0.2.0":
-                issue("unsupported_semantic_version", "metadata_failure",
-                      "Semantic validation supports 0.2.0; legacy records require explicit review.", record)
             if record["id"] in indexed:
                 issue("duplicate_record_id", "metadata_failure", "Record IDs must be unique.", record)
             else:
@@ -92,9 +89,6 @@ class PackageValidator:
         for record in indexed.values():
             if record["case_id"] != case_id:
                 issue("case_mismatch", "metadata_failure", "Record belongs to a different case.", record, "/case_id")
-            declared = manifest.get("schema_versions", {}).get(record["schema"])
-            if declared is not None and declared != record["schema_version"]:
-                issue("schema_version_mismatch", "metadata_failure", "Manifest version map disagrees with a record.", record)
             for ref in references(record):
                 target = indexed.get(ref.identifier)
                 if target is None:

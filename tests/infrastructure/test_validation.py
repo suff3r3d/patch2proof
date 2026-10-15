@@ -57,7 +57,7 @@ class PackageValidationTests(unittest.TestCase):
 
     def test_draft_can_be_empty_and_does_not_become_verified(self):
         manifest = self.record(self.manifest_id)
-        record = {key: manifest[key] for key in ("schema", "schema_version", "id", "case_id", "package_version")}
+        record = {key: manifest[key] for key in ("schema", "id", "case_id", "package_version")}
         record.update(status="draft", provenance={"created_at": "2026-10-04T00:10:00Z", "created_by": "fixture"})
         self.assertTrue(self.report([record]).valid)
 
@@ -81,12 +81,9 @@ class PackageValidationTests(unittest.TestCase):
         self.record("execution-vulnerable", records)["limits"] = None
         self.assert_code("schema_invalid", records)
 
-    def test_unknown_and_legacy_versions_are_not_silently_converted(self):
-        for version, code in (("0.3.0", "unsupported_version"), ("0.1.0", "unsupported_semantic_version")):
-            records = deepcopy(self.records)
-            self.record("source-advisory", records)["schema_version"] = version
-            with self.subTest(version=version):
-                self.assert_code(code, records)
+    def test_schema_version_field_is_rejected(self):
+        self.record("source-advisory")["schema_version"] = "0.2.0"
+        self.assert_code("schema_invalid")
 
     def test_hash_corruption_size_mismatch_and_missing_bytes(self):
         artifact = self.record("artifact-trigger")
@@ -105,12 +102,12 @@ class PackageValidationTests(unittest.TestCase):
         self.record(self.manifest_id)["artifact_ids"].remove("artifact-trigger")
         self.assert_code("artifact_not_indexed")
 
-    def test_source_inventory_and_declared_schema_versions_must_agree(self):
+    def test_source_inventory_and_undeclared_manifest_fields(self):
         records = deepcopy(self.records)
         self.record(self.manifest_id, records)["source_ids"] = ["source-not-present"]
         self.assert_code("source_not_indexed", records)
         self.record(self.manifest_id)["schema_versions"] = {"source-record": "0.1.0"}
-        self.assert_code("schema_version_mismatch")
+        self.assert_code("schema_invalid")
 
     def test_available_reference_cannot_point_to_unavailable_artifact(self):
         artifact = self.record("artifact-trigger")

@@ -6,11 +6,11 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 
-from .fixtures import VALID, invalid_fixtures
+from .fixtures import invalid_fixtures
+from .fixtures_current import VALID
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SUPPORTED_VERSIONS = {"0.1.0", "0.2.0"}
 PERSISTED = {
     "artifact-record", "source-record", "vulnerability-record",
     "environment-spec", "build-record", "execution-record",
@@ -27,12 +27,10 @@ def reject_duplicate_keys(pairs):
     return result
 
 
-def load_registry(version="0.1.0"):
-    if version not in SUPPORTED_VERSIONS:
-        raise ValueError(f"unsupported schema version: {version}")
+def load_registry():
     schemas = {}
     names = {}
-    for path in sorted((ROOT / "schemas" / version).glob("*.schema.json")):
+    for path in sorted((ROOT / "schemas").glob("*.schema.json")):
         with path.open(encoding="utf-8") as stream:
             schema = json.load(stream, object_pairs_hook=reject_duplicate_keys)
         schemas[schema["$id"]] = schema
@@ -58,6 +56,7 @@ class SchemaTests(unittest.TestCase):
     def test_inventory(self):
         self.assertEqual(PERSISTED | {"common"}, set(self.by_name))
         self.assertEqual(PERSISTED, set(VALID))
+        self.assertFalse(any((ROOT / "schemas").glob("[0-9]*")))
 
     def test_schemas_are_valid_draft_2020_12(self):
         for name, schema in self.by_name.items():
@@ -123,7 +122,7 @@ class SchemaTests(unittest.TestCase):
         cases.append(("build-record", "dependency inventory", value))
 
         value = deepcopy(VALID["verification-result"])
-        value["checks"]["negative_controls"]["passed"] = False
+        value["checks"]["negative_controls"]["status"] = "failed"
         cases.append(("verification-result", "all VERIFIED checks pass", value))
 
         value = deepcopy(VALID["verification-result"])

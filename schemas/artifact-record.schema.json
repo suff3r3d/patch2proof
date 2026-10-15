@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dacn:schema:artifact-record",
+  "title": "DACN artifact record",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:dacn:schema:common#/$defs/record_envelope"
+    },
+    {
+      "if": {
+        "properties": {
+          "available": {
+            "const": false
+          }
+        },
+        "required": [
+          "available"
+        ]
+      },
+      "then": {
+        "required": [
+          "unavailable_reason"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "path"
+              ]
+            },
+            {
+              "required": [
+                "sha256"
+              ]
+            },
+            {
+              "required": [
+                "size_bytes"
+              ]
+            }
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "path",
+          "sha256",
+          "size_bytes"
+        ]
+      }
+    }
+  ],
+  "required": [
+    "schema",
+    "id",
+    "case_id",
+    "provenance",
+    "kind",
+    "available"
+  ],
+  "properties": {
+    "schema": {
+      "const": "artifact-record"
+    },
+    "id": {},
+    "case_id": {},
+    "provenance": {},
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "available": {
+      "type": "boolean"
+    },
+    "path": {
+      "$ref": "urn:dacn:schema:common#/$defs/relative_path"
+    },
+    "sha256": {
+      "$ref": "urn:dacn:schema:common#/$defs/sha256"
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unavailable_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "media_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "producer": {
+      "$ref": "urn:dacn:schema:common#/$defs/record_ref"
+    },
+    "derived_from": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:dacn:schema:common#/$defs/artifact_ref"
+      }
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "unevaluatedProperties": false
+}

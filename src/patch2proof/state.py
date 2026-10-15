@@ -34,6 +34,7 @@ class ResearchState(TypedDict, total=False):
     reasoning_mode: str
     current_attempt_id: str
     proof_bundle: dict
+    dacn_package: dict
 
     evidence: Annotated[list[dict], add]
     hypotheses: Annotated[list[dict], add]

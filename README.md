@@ -114,6 +114,16 @@ The command writes artifacts under `artifacts/demo-path-canary/`, including:
 - `attempt-*.json` and `feedback-*.json`
 - `proof-bundle.json`
 - `final-report.md`
+- `dacn-package.json` (location and validation result for the DACN draft package)
+
+The DACN package is stored under `artifacts/<case-id>/dacn/<run-id>/`. It uses the
+schemas in `schemas/` and the offline package validator. Runs
+publish immutable artifact and draft case-manifest records; source and
+vulnerability-context records appear after patch ingestion. Build, execution,
+and verification records are omitted
+until their required observed identities and reviewed oracle evidence exist.
+The DACN manifest remains `draft` even when the pipeline's own report is
+`candidate`; schema validity does not confirm a vulnerability.
 
 ### 4. Run the LangGraph server locally
 

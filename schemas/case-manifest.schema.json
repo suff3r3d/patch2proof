@@ -1,0 +1,281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dacn:schema:case-manifest",
+  "title": "DACN case manifest",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:dacn:schema:common#/$defs/record_envelope"
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "replayable",
+              "verified"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "vulnerability_id",
+          "source_ids",
+          "environment_id",
+          "builds",
+          "artifact_ids",
+          "executions",
+          "verification_result_id",
+          "replay"
+        ],
+        "properties": {
+          "builds": {
+            "required": [
+              "vulnerable",
+              "patched"
+            ]
+          },
+          "executions": {
+            "required": [
+              "vulnerable",
+              "patched",
+              "negative_controls"
+            ]
+          },
+          "artifact_ids": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "not_reproduced",
+              "inconclusive",
+              "invalid_environment"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "verification_result_id",
+          "artifact_ids"
+        ],
+        "properties": {
+          "artifact_ids": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "failure"
+        ]
+      },
+      "then": {
+        "required": [
+          "artifact_ids"
+        ],
+        "properties": {
+          "artifact_ids": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "verified"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "failure"
+          ]
+        }
+      }
+    }
+  ],
+  "required": [
+    "schema",
+    "id",
+    "case_id",
+    "provenance",
+    "package_version",
+    "status"
+  ],
+  "properties": {
+    "schema": {
+      "const": "case-manifest"
+    },
+    "id": {},
+    "case_id": {},
+    "provenance": {},
+    "package_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "buildable",
+        "replayable",
+        "verified",
+        "not_reproduced",
+        "inconclusive",
+        "invalid_environment"
+      ]
+    },
+    "vulnerability_id": {
+      "$ref": "urn:dacn:schema:common#/$defs/record_id"
+    },
+    "source_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:dacn:schema:common#/$defs/record_id"
+      }
+    },
+    "environment_id": {
+      "$ref": "urn:dacn:schema:common#/$defs/record_id"
+    },
+    "builds": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "vulnerable": {
+          "$ref": "urn:dacn:schema:common#/$defs/record_id"
+        },
+        "patched": {
+          "$ref": "urn:dacn:schema:common#/$defs/record_id"
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifact_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:dacn:schema:common#/$defs/record_id"
+      }
+    },
+    "executions": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "vulnerable": {
+          "$ref": "urn:dacn:schema:common#/$defs/record_id"
+        },
+        "patched": {
+          "$ref": "urn:dacn:schema:common#/$defs/record_id"
+        },
+        "negative_controls": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:dacn:schema:common#/$defs/record_id"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "required": [
+        "stage",
+        "class",
+        "summary",
+        "evidence"
+      ],
+      "properties": {
+        "stage": {
+          "enum": [
+            "collect",
+            "normalize",
+            "resolve",
+            "build",
+            "extract",
+            "execute",
+            "verify",
+            "report"
+          ]
+        },
+        "class": {
+          "$ref": "urn:dacn:schema:common#/$defs/failure_class"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "urn:dacn:schema:common#/$defs/artifact_ref"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "verification_result_id": {
+      "$ref": "urn:dacn:schema:common#/$defs/record_id"
+    },
+    "replay": {
+      "type": "object",
+      "required": [
+        "entry_point",
+        "command",
+        "working_directory"
+      ],
+      "properties": {
+        "entry_point": {
+          "$ref": "urn:dacn:schema:common#/$defs/artifact_ref"
+        },
+        "command": {
+          "$ref": "urn:dacn:schema:common#/$defs/command"
+        },
+        "working_directory": {
+          "$ref": "urn:dacn:schema:common#/$defs/relative_path"
+        },
+        "prerequisites": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

@@ -1,21 +1,19 @@
-import json
 import unittest
 from copy import deepcopy
 
 from jsonschema import Draft202012Validator, FormatChecker
-from referencing import Registry, Resource
 
-from .fixtures import VALID as LEGACY_VALID, invalid_fixtures
-from .fixtures_v020 import (
+from .fixtures import invalid_fixtures
+from .fixtures_current import (
     CHECK_KEYS, VALID, check, docker_unavailable, non_success, partial_manifest,
 )
-from .test_schemas import PERSISTED, ROOT, load_registry, reject_duplicate_keys
+from .test_schemas import PERSISTED, load_registry
 
 
-class Schema020Tests(unittest.TestCase):
+class CurrentSchemaTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.schemas, cls.by_name, cls.registry = load_registry("0.2.0")
+        cls.schemas, cls.by_name, cls.registry = load_registry()
 
     def validator(self, name):
         return Draft202012Validator(
@@ -34,7 +32,7 @@ class Schema020Tests(unittest.TestCase):
         self.assertEqual(PERSISTED, set(VALID))
         for name, schema in self.by_name.items():
             with self.subTest(schema=name):
-                self.assertEqual(f"urn:dacn:schema:{name}:0.2.0", schema["$id"])
+                self.assertEqual(f"urn:dacn:schema:{name}", schema["$id"])
                 Draft202012Validator.check_schema(schema)
                 pending = [schema]
                 while pending:
@@ -42,7 +40,6 @@ class Schema020Tests(unittest.TestCase):
                     if isinstance(node, dict):
                         if "$ref" in node:
                             self.registry.resolver(base_uri=schema["$id"]).lookup(node["$ref"])
-                            self.assertNotIn(":0.1.0", node["$ref"])
                         pending.extend(node.values())
                     elif isinstance(node, list):
                         pending.extend(node)
@@ -52,15 +49,8 @@ class Schema020Tests(unittest.TestCase):
             with self.subTest(schema=name):
                 self.assert_valid(name, record)
 
-    def test_existing_invalid_records_remain_invalid(self):
-        for name, record in invalid_fixtures().items():
-            value = deepcopy(VALID[name])
-            # Apply each original invalid change to its otherwise-valid new fixture.
-            for key in set(LEGACY_VALID[name]) - set(record):
-                del value[key]
-            for key, item in record.items():
-                if item != LEGACY_VALID[name].get(key):
-                    value[key] = item
+    def test_invalid_records_remain_invalid(self):
+        for name, value in invalid_fixtures().items():
             with self.subTest(schema=name):
                 self.assert_invalid(name, value)
 
@@ -262,62 +252,6 @@ class Schema020Tests(unittest.TestCase):
         value = docker_unavailable()
         del value["oracle"]
         self.assert_invalid("verification-result", value)
-
-    def test_both_versions_can_be_registered_without_fallback(self):
-        legacy, _, _ = load_registry("0.1.0")
-        resources = {**legacy, **self.schemas}
-        self.assertEqual(18, len(resources))
-        registry = Registry().with_resources([
-            (uri, Resource.from_contents(schema)) for uri, schema in resources.items()
-        ])
-        for fixtures in (LEGACY_VALID, VALID):
-            for name, value in fixtures.items():
-                uri = f"urn:dacn:schema:{name}:{value['schema_version']}"
-                validator = Draft202012Validator(resources[uri], registry=registry, format_checker=FormatChecker())
-                with self.subTest(schema=name, version=value["schema_version"]):
-                    self.assertTrue(validator.is_valid(value))
-        for version in ("latest", "0.3.0", "../0.1.0"):
-            with self.subTest(version=version), self.assertRaises(ValueError):
-                load_registry(version)
-
-    def test_version_mismatches_are_rejected(self):
-        _, legacy_names, legacy_registry = load_registry("0.1.0")
-        for name in PERSISTED:
-            with self.subTest(schema=name):
-                self.assert_invalid(name, LEGACY_VALID[name])
-                old_validator = Draft202012Validator(legacy_names[name], registry=legacy_registry)
-                self.assertFalse(old_validator.is_valid(VALID[name]))
-
-    def test_legacy_false_remains_legacy_and_cannot_be_silently_upgraded(self):
-        value = deepcopy(LEGACY_VALID["verification-result"])
-        value["verdict"] = "INCONCLUSIVE"
-        value["failure_class"] = "oracle_failure"
-        value["checks"]["reachability"]["passed"] = False
-        _, names, registry = load_registry("0.1.0")
-        self.assertTrue(Draft202012Validator(names["verification-result"], registry=registry).is_valid(value))
-        value["schema_version"] = "0.2.0"
-        value["oracle"] = deepcopy(VALID["verification-result"]["oracle"])
-        self.assert_invalid("verification-result", value)
-
-    def test_old_true_checks_need_explicit_new_identity(self):
-        value = deepcopy(LEGACY_VALID["verification-result"])
-        value["schema_version"] = "0.2.0"
-        for item in value["checks"].values():
-            del item["passed"]
-            item["status"] = "passed"
-        self.assert_invalid("verification-result", value)
-        # Synthetic supplied identity, not an inferred identity or real migration.
-        value["oracle"] = deepcopy(VALID["verification-result"]["oracle"])
-        self.assert_valid("verification-result", value)
-
-    def test_unchanged_contracts_only_change_version(self):
-        changed = {"verification-result", "case-manifest"}
-        for name in (PERSISTED | {"common"}) - changed:
-            legacy_path = ROOT / "schemas" / "0.1.0" / f"{name}.schema.json"
-            expected = json.loads(legacy_path.read_text().replace("0.1.0", "0.2.0"),
-                                  object_pairs_hook=reject_duplicate_keys)
-            with self.subTest(schema=name):
-                self.assertEqual(expected, self.by_name[name])
 
     def test_schema_validity_does_not_claim_cross_record_integrity(self):
         # This boundary is intentional: these calls only perform schema validation.

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dacn:schema:source-record",
+  "title": "DACN source record",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:dacn:schema:common#/$defs/record_envelope"
+    },
+    {
+      "if": {
+        "properties": {
+          "retrieval_status": {
+            "const": "succeeded"
+          }
+        },
+        "required": [
+          "retrieval_status"
+        ]
+      },
+      "then": {
+        "required": [
+          "content"
+        ]
+      },
+      "else": {
+        "required": [
+          "error"
+        ]
+      }
+    }
+  ],
+  "required": [
+    "schema",
+    "id",
+    "case_id",
+    "provenance",
+    "source_type",
+    "url",
+    "retrieved_at",
+    "retrieval_status"
+  ],
+  "properties": {
+    "schema": {
+      "const": "source-record"
+    },
+    "id": {},
+    "case_id": {},
+    "provenance": {},
+    "source_type": {
+      "enum": [
+        "advisory",
+        "repository",
+        "commit",
+        "issue",
+        "cwe",
+        "other"
+      ]
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "retrieved_at": {
+      "$ref": "urn:dacn:schema:common#/$defs/timestamp"
+    },
+    "retrieval_status": {
+      "enum": [
+        "succeeded",
+        "failed"
+      ]
+    },
+    "content": {
+      "$ref": "urn:dacn:schema:common#/$defs/artifact_ref"
+    },
+    "error": {
+      "$ref": "urn:dacn:schema:common#/$defs/failure"
+    },
+    "publisher": {
+      "type": "string",
+      "minLength": 1
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1
+    },
+    "notes": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "unevaluatedProperties": false
+}

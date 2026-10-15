@@ -1,32 +1,13 @@
-"""Synthetic structural examples, not complete packages or migration code."""
+"""Synthetic structural examples for the current contract."""
 
 from copy import deepcopy
 
-from .fixtures import VALID as LEGACY_VALID, artifact_ref
+from .fixtures import VALID as BASE_VALID, artifact_ref
 
 
-VALID = deepcopy(LEGACY_VALID)
-for record in VALID.values():
-    record["schema_version"] = "0.2.0"
+VALID = deepcopy(BASE_VALID)
 
 CHECK_KEYS = tuple(VALID["verification-result"]["checks"])
-for check in VALID["verification-result"]["checks"].values():
-    del check["passed"]
-    check["status"] = "passed"
-
-VALID["verification-result"]["oracle"] = {
-    "name": "fixture-oracle",
-    "version": "0.2.0",
-    "adapter": {
-        "name": "synthetic-parser",
-        "version": "1.0.0",
-        "implementation": artifact_ref("artifact-adapter-source"),
-    },
-    "case_definition": artifact_ref("artifact-reviewed-case"),
-}
-VALID["case-manifest"]["artifact_ids"].extend([
-    "artifact-adapter-source", "artifact-reviewed-case",
-])
 
 
 def check(status, summary, evidence_id=None, reason=None):

@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dacn:schema:environment-spec",
+  "title": "DACN paired environment specification",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:dacn:schema:common#/$defs/record_envelope"
+    }
+  ],
+  "required": [
+    "schema",
+    "id",
+    "case_id",
+    "provenance",
+    "platform",
+    "isolation",
+    "toolchain",
+    "dependencies",
+    "build",
+    "network",
+    "limits"
+  ],
+  "properties": {
+    "schema": {
+      "const": "environment-spec"
+    },
+    "id": {},
+    "case_id": {},
+    "provenance": {},
+    "platform": {
+      "type": "object",
+      "required": [
+        "os",
+        "arch"
+      ],
+      "properties": {
+        "os": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arch": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "isolation": {
+      "type": "object",
+      "required": [
+        "type",
+        "image_digest"
+      ],
+      "properties": {
+        "type": {
+          "const": "docker"
+        },
+        "image_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "toolchain": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "required": [
+        "policy"
+      ],
+      "properties": {
+        "policy": {
+          "enum": [
+            "locked",
+            "record_resolution",
+            "unresolved"
+          ]
+        },
+        "manifests": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:dacn:schema:common#/$defs/artifact_ref"
+          }
+        },
+        "locks": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:dacn:schema:common#/$defs/artifact_ref"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "build": {
+      "type": "object",
+      "required": [
+        "configure_commands",
+        "commands"
+      ],
+      "properties": {
+        "configure_commands": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:dacn:schema:common#/$defs/command"
+          }
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "urn:dacn:schema:common#/$defs/command"
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "expected_outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:dacn:schema:common#/$defs/relative_path"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "network": {
+      "type": "object",
+      "required": [
+        "acquisition",
+        "build",
+        "execution"
+      ],
+      "properties": {
+        "acquisition": {
+          "type": "boolean"
+        },
+        "build": {
+          "type": "boolean"
+        },
+        "execution": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "$ref": "urn:dacn:schema:common#/$defs/limits"
+    },
+    "instrumentation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "availability"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "availability": {
+            "enum": [
+              "required",
+              "optional",
+              "unavailable",
+              "incompatible"
+            ]
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "role_overrides": {
+      "type": "object",
+      "properties": {
+        "vulnerable": {
+          "$ref": "#/$defs/role_override"
+        },
+        "patched": {
+          "$ref": "#/$defs/role_override"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "role_override": {
+      "type": "object",
+      "required": [
+        "reason",
+        "values"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "values": {
+          "type": "object",
+          "minProperties": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

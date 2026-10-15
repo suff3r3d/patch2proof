@@ -7,7 +7,7 @@ define the current record contracts; historical designs do not override them.
 | --- | --- |
 | [Package foundation](package-foundation.md) | Implemented storage API, validation CLI, integrity checks and limits. |
 | [Schema usage](schema-usage-guide.md) | How producers populate the eight current record types. |
-| [Schema compatibility](schema-compatibility.md) | Differences between 0.1.0 and 0.2.0 and future migration requirements. |
+| [Schema compatibility](schema-compatibility.md) | Historical version differences; the active schemas are unversioned. |
 | [Verification and execution contract](verification-contract.md) | Evidence requirements, verdict rules, adapter boundaries and paired execution. |
 
 Storage and package validation are implemented. Automated intake, builders,

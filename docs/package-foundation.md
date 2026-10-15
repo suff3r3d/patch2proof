@@ -1,7 +1,7 @@
 # Package Storage and Semantic Validation
 
 The `dacn` package provides immutable artifact/record storage, offline schema
-selection, and deterministic package consistency checks. It does not build or
+validation, and deterministic package consistency checks. It does not build or
 execute targets, interpret vulnerability signals, or derive a new CVE verdict.
 It has no agent or LLM dependency.
 
@@ -14,7 +14,7 @@ and executable examples inside Docker using the [test workflow](../tests/schema/
 
 | Interface | Input | Output |
 |---|---|---|
-| `SchemaCatalog(schema_root)` | Explicit trusted schema directory | Offline validators for exact `0.1.0` and `0.2.0` identities. |
+| `SchemaCatalog(schema_root)` | Explicit trusted schema directory | Offline validators for the schemas in `schemas/`. |
 | `CaseStore(root, catalog)` | Explicit case root and configurable limits | Store handle; construction and reads do not create files. |
 | `put_artifact(stream, ...)` / `put_bytes(bytes, ...)` | Bytes, artifact ID, case ID, kind, provenance, optional parents | `StoredArtifact` with typed reference, relative path, size, and persisted record. |
 | `put_record(record)` | Schema-valid JSON record | Relative path of a write-once record. Available artifacts must already match their bytes. |
@@ -66,7 +66,7 @@ unsupported operation fails explicitly. Stored artifacts are not executable.
 
 ## Checks and diagnostics
 
-Validation checks schemas, versions, duplicate IDs, and manifest identity first.
+Validation checks schemas, duplicate IDs, and manifest identity first.
 Invalid structures stop reference traversal. It then checks references and bytes;
 invalid references or integrity failures stop relational checks. Diagnostics
 contain a stable `code`, research `failure_class`, `record_id`, JSON pointer
@@ -74,7 +74,7 @@ contain a stable `code`, research `failure_class`, `record_id`, JSON pointer
 
 Implemented checks include:
 
-- Reference existence/type, case membership, version declarations, source/artifact
+- Reference existence/type, case membership, source/artifact
   inventories, and reference-to-artifact digests. Raw metadata and claim values
   are never interpreted as links.
 - Actual artifact hash/size, availability, path safety, and changes during a read.
@@ -99,8 +99,7 @@ verdict selection remain the future adapter/oracle's responsibility.
 
 ## Supported baseline and limits
 
-- Schema validation supports both versions. Semantic validation supports `0.2.0`
-  only and explicitly rejects legacy/mixed records; it performs no migration.
+- Schema and semantic validation use the current schemas in `schemas/`.
 - Build/execution network flags must be false. Nonempty role overrides require
   future comparison-policy support and are rejected explicitly.
 - Controls use different benign input bytes on the selected paired builds.
@@ -130,7 +129,7 @@ artifact = store.put_bytes(
     provenance={"created_at": utc_now(), "created_by": "example"},
 )
 manifest = {
-    "schema": "case-manifest", "schema_version": "0.2.0",
+    "schema": "case-manifest",
     "id": "manifest-demo", "case_id": "case-demo", "package_version": "0.1.0",
     "provenance": {"created_at": utc_now(), "created_by": "example"},
     "status": "draft", "artifact_ids": [artifact.reference.id],

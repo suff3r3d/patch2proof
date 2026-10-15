@@ -17,6 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from .config import load_case
+from .dacn_bridge import publish_dacn_package
 from .evidence import write_json
 from .feedback import (
     application_for,
@@ -61,8 +62,8 @@ from .reproduction_graph import (
 )
 from .retrieval import retrieve_context
 from .safe_poc import generate_safe_poc
-from .source_analysis import build_source_context, execute_source_query
 from .skill_memory import SkillMemory
+from .source_analysis import build_source_context, execute_source_query
 from .state import ResearchState
 from .tools.diff_analysis import analyze_diff
 from .tools.docker_worker import DockerWorker
@@ -1030,11 +1031,13 @@ def report_node(state: ResearchState) -> ResearchState:
         source_context=state.get("source_context"),
         proof_bundle=bundle,
     )
+    dacn_package = publish_dacn_package(case, state, _out(state))
     return {
         "phase": "report",
         "status": "completed",
         "report_path": report_path,
         "proof_bundle": bundle,
+        "dacn_package": dacn_package,
     }
 
 
@@ -1042,7 +1045,7 @@ def blocked_node(state: ResearchState) -> ResearchState:
     return {"phase": "blocked", "status": "blocked"}
 
 
-def build_graph():
+def build_graph(*, local_checkpointer: bool = False):
     builder = StateGraph(ResearchState)
     for name, node in {
         "preflight": preflight_node,
@@ -1095,10 +1098,11 @@ def build_graph():
     builder.add_edge("skill_update", "report")
     builder.add_edge("report", END)
     builder.add_edge("blocked", "report")
-    return builder.compile(checkpointer=InMemorySaver())
+    return builder.compile(checkpointer=InMemorySaver() if local_checkpointer else None)
 
 
 graph = build_graph()
+_local_graph = build_graph(local_checkpointer=True)
 
 
 def initial_state(
@@ -1145,10 +1149,10 @@ def invoke_case(
     if dry_run:
         state["events"] = [*state.get("events", []), {"node": "cli", "dry_run": True}]
     config = {"configurable": {"thread_id": _case(state).case_id}}
-    return dict(graph.invoke(state, config=config))
+    return dict(_local_graph.invoke(state, config=config))
 
 
 def resume_case(case_path: str, decision: dict, reasoning_mode: str | None = None) -> dict:
     state = initial_state(case_path, reasoning_mode=reasoning_mode)
     config = {"configurable": {"thread_id": _case(state).case_id}}
-    return dict(graph.invoke(Command(resume=decision), config=config))
+    return dict(_local_graph.invoke(Command(resume=decision), config=config))

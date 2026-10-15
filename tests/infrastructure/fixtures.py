@@ -3,7 +3,7 @@
 from copy import deepcopy
 
 from dacn.storage import CaseStore
-from schema.fixtures_v020 import VALID, docker_unavailable, partial_manifest
+from schema.fixtures_current import VALID, docker_unavailable, partial_manifest
 
 
 PROVENANCE = {"created_at": "2026-10-04T00:10:00Z", "created_by": "infrastructure-fixture"}

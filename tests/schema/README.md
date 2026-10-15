@@ -1,8 +1,8 @@
 # Schema contract tests
 
-The suite validates both the `0.1.0` legacy and `0.2.0` current families offline.
+The suite validates the current schemas in `schemas/` offline.
 It checks Draft 2020-12 validity, duplicate keys, offline `$ref` resolution,
-version selection, valid/invalid fixtures, partial failures, three-state checks,
+valid/invalid fixtures, partial failures, three-state checks,
 required oracle identity, and complete success packages. These are contract
 tests. The full discovery command below also runs `tests/infrastructure/`, which
 tests the implemented artifact store and semantic validator. No runtime oracle
@@ -46,12 +46,9 @@ for offline reruns; its `resolved-requirements.txt` records the installed versio
 
 ## Fixture and compatibility limits
 
-`fixtures.py` retains the `0.1.0` examples; `fixtures_v020.py` contains the new
-examples and early-failure scenarios. They use synthetic identities and hashes
+`fixtures.py` contains the base examples; `fixtures_current.py` contains
+early-failure scenarios. They use synthetic identities and hashes
 and do not represent complete replayable packages. Tests reject missing evidence
 references where required. Infrastructure tests separately check real synthetic
 bytes and package relationships; CVE attribution remains future oracle work.
 
-No automatic migration is provided. Tests ensure that changing a version string
-cannot silently reinterpret a legacy false check. See
-[compatibility requirements](../../docs/schema-compatibility.md).

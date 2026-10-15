@@ -1,4 +1,4 @@
-"""Explicit offline schema selection and structured validation diagnostics."""
+"""Offline validation against the single repository schema set."""
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -11,7 +11,6 @@ from referencing import Registry, Resource
 
 
 Record = dict[str, Any]  # External JSON is schema-validated at every boundary.
-SUPPORTED_VERSIONS = ("0.1.0", "0.2.0")
 RECORD_TYPES = frozenset({
     "source-record", "artifact-record", "vulnerability-record", "environment-spec",
     "build-record", "execution-record", "verification-result", "case-manifest",
@@ -69,15 +68,14 @@ class SchemaCatalog:
 
     def __init__(self, schema_root: Path):
         self.schemas = {}
-        for version in SUPPORTED_VERSIONS:
-            for name in sorted(RECORD_TYPES | {"common"}):
-                path = Path(schema_root) / version / f"{name}.schema.json"
-                schema = decode_json(path.read_bytes())
-                expected = f"urn:dacn:schema:{name}:{version}"
-                if schema.get("$id") != expected:
-                    raise ValueError(f"incorrect schema identity for {name}:{version}")
-                Draft202012Validator.check_schema(schema)
-                self.schemas[expected] = schema
+        for name in sorted(RECORD_TYPES | {"common"}):
+            path = Path(schema_root) / f"{name}.schema.json"
+            schema = decode_json(path.read_bytes())
+            expected = f"urn:dacn:schema:{name}"
+            if schema.get("$id") != expected:
+                raise ValueError(f"incorrect schema identity for {name}")
+            Draft202012Validator.check_schema(schema)
+            self.schemas[expected] = schema
         self.registry = Registry().with_resources([
             (uri, Resource.from_contents(schema)) for uri, schema in self.schemas.items()
         ])
@@ -90,16 +88,14 @@ class SchemaCatalog:
         if not isinstance(record, dict):
             return (Diagnostic("schema_invalid", "metadata_failure", "Record must be an object."),)
         identifier = record.get("id") if isinstance(record.get("id"), str) else None
-        name, version = record.get("schema"), record.get("schema_version")
+        name = record.get("schema")
         if not isinstance(name, str) or name not in RECORD_TYPES:
             return (Diagnostic("unsupported_schema", "metadata_failure", "Unknown record schema.", identifier, "/schema"),)
-        if version not in SUPPORTED_VERSIONS:
-            return (Diagnostic("unsupported_version", "metadata_failure", "Unsupported schema version.", identifier, "/schema_version"),)
         try:
             canonical_json(record)
         except (TypeError, ValueError, UnicodeError, RecursionError):
             return (Diagnostic("invalid_json", "metadata_failure", "Record is not finite, serializable JSON.", identifier),)
-        validator = self.validators[f"urn:dacn:schema:{name}:{version}"]
+        validator = self.validators[f"urn:dacn:schema:{name}"]
         errors = sorted(validator.iter_errors(record), key=lambda error: pointer(error.absolute_path))
         return tuple(Diagnostic(
             "schema_invalid", "metadata_failure",

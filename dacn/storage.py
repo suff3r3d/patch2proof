@@ -183,7 +183,7 @@ class CaseStore:
             sha256 = digest.hexdigest()
             path = f"artifacts/sha256/{sha256}"
             record = {
-                "schema": "artifact-record", "schema_version": "0.2.0",
+                "schema": "artifact-record",
                 "id": identifier, "case_id": case_id, "provenance": provenance,
                 "kind": kind, "available": True, "path": path,
                 "sha256": sha256, "size_bytes": size,

@@ -3,12 +3,9 @@
 ## 1. Purpose
 
 This guide explains how pipeline components and future runtime agents should
-use the `schemas/0.2.0/` records. The JSON Schemas define valid document shape;
+use the `schemas/` records. The JSON Schemas define valid document shape;
 this guide defines the intended workflow and meaning.
 
-Legacy `0.1.0` records remain valid against their original schemas. See
-[schema compatibility](schema-compatibility.md) for version selection and
-review requirements; never reinterpret a legacy false check automatically.
 
 The active family contains eight persisted records:
 
@@ -83,7 +80,6 @@ Every persisted record begins with:
 
 ```yaml
 schema: execution-record
-schema_version: 0.2.0
 id: execution-vulnerable-001
 case_id: case-001
 provenance:
@@ -98,7 +94,6 @@ provenance:
 Field meanings:
 
 - `schema` selects the record contract.
-- `schema_version` must match the schema used for validation.
 - `id` identifies this immutable record.
 - `case_id` connects the record to its case.
 - `provenance` identifies when, by whom, and optionally how the record was
@@ -425,13 +420,12 @@ does not mean the vulnerability was verified.
 ## 11. Validation workflow
 
 The [package foundation](package-foundation.md) now implements offline schema,
-artifact-integrity, and cross-record checks for the `0.2.0` baseline. It does not
-replace the independent CVE oracle or perform automatic legacy migration.
+artifact-integrity, and cross-record checks for the current schema set. It does not
+replace the independent CVE oracle.
 
 Before returning any record:
 
-1. Select the schema matching the record's `schema` and `schema_version`.
-   Reject unsupported versions rather than selecting a default.
+1. Select the schema matching the record's `schema` field.
 2. Validate through the complete offline schema registry so `$ref` resolution
    never uses the network.
 3. Correct structural validation errors without fabricating values.

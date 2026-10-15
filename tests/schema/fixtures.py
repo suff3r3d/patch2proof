@@ -1,4 +1,4 @@
-"""Small, explicit records demonstrating the Phase 1 MVP contracts."""
+"""Small, explicit records demonstrating the current schema contracts."""
 
 from copy import deepcopy
 
@@ -25,7 +25,6 @@ def provenance(*inputs):
 def envelope(schema, identifier, *inputs):
     return {
         "schema": schema,
-        "schema_version": "0.1.0",
         "id": identifier,
         "case_id": CASE,
         "provenance": provenance(*inputs),
@@ -34,7 +33,7 @@ def envelope(schema, identifier, *inputs):
 
 def verification_check(summary, evidence_id="artifact-sanitizer"):
     return {
-        "passed": True,
+        "status": "passed",
         "summary": summary,
         "evidence": [artifact_ref(evidence_id)],
     }
@@ -191,6 +190,16 @@ VALID = {
         "verdict": "VERIFIED",
         "rationale": "Paired execution and the negative control satisfy the expected checks.",
         "evidence": [artifact_ref("artifact-sanitizer")],
+        "oracle": {
+            "name": "fixture-oracle",
+            "version": "0.2.0",
+            "adapter": {
+                "name": "synthetic-parser",
+                "version": "1.0.0",
+                "implementation": artifact_ref("artifact-adapter-source"),
+            },
+            "case_definition": artifact_ref("artifact-reviewed-case"),
+        },
     },
     "case-manifest": {
         **envelope("case-manifest", "manifest-001", "verification-001"),
@@ -200,7 +209,10 @@ VALID = {
         "source_ids": ["source-advisory"],
         "environment_id": "environment-paired",
         "builds": {"vulnerable": "build-vulnerable", "patched": "build-patched"},
-        "artifact_ids": ["artifact-trigger", "artifact-sanitizer"],
+        "artifact_ids": [
+            "artifact-trigger", "artifact-sanitizer",
+            "artifact-adapter-source", "artifact-reviewed-case",
+        ],
         "executions": {
             "vulnerable": "execution-vulnerable",
             "patched": "execution-patched",

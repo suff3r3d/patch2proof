@@ -1,14 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:dacn:schema:common:0.2.0",
+  "$id": "urn:dacn:schema:common",
   "title": "DACN Phase 1 MVP common definitions",
   "$defs": {
     "non_empty_string": {
       "type": "string",
       "minLength": 1
-    },
-    "schema_version": {
-      "const": "0.2.0"
     },
     "record_id": {
       "type": "string",
@@ -33,9 +30,14 @@
     },
     "record_ref": {
       "type": "object",
-      "required": ["id", "schema"],
+      "required": [
+        "id",
+        "schema"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/record_id" },
+        "id": {
+          "$ref": "#/$defs/record_id"
+        },
         "schema": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]*$"
@@ -45,29 +47,49 @@
     },
     "artifact_ref": {
       "type": "object",
-      "required": ["id", "sha256"],
+      "required": [
+        "id",
+        "sha256"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/record_id" },
-        "sha256": { "$ref": "#/$defs/sha256" }
+        "id": {
+          "$ref": "#/$defs/record_id"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
       },
       "additionalProperties": false
     },
     "command": {
       "type": "array",
       "minItems": 1,
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "provenance": {
       "type": "object",
-      "required": ["created_at", "created_by"],
+      "required": [
+        "created_at",
+        "created_by"
+      ],
       "properties": {
-        "created_at": { "$ref": "#/$defs/timestamp" },
-        "created_by": { "$ref": "#/$defs/non_empty_string" },
-        "method": { "type": "string" },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "created_by": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "method": {
+          "type": "string"
+        },
         "inputs": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/record_id" }
+          "items": {
+            "$ref": "#/$defs/record_id"
+          }
         }
       },
       "additionalProperties": false
@@ -91,48 +113,97 @@
     },
     "failure": {
       "type": "object",
-      "required": ["class", "summary"],
+      "required": [
+        "class",
+        "summary"
+      ],
       "properties": {
-        "class": { "$ref": "#/$defs/failure_class" },
-        "summary": { "$ref": "#/$defs/non_empty_string" },
+        "class": {
+          "$ref": "#/$defs/failure_class"
+        },
+        "summary": {
+          "$ref": "#/$defs/non_empty_string"
+        },
         "evidence": {
           "type": "array",
-          "items": { "$ref": "#/$defs/artifact_ref" }
+          "items": {
+            "$ref": "#/$defs/artifact_ref"
+          }
         }
       },
       "additionalProperties": false
     },
     "verdict": {
-      "enum": ["VERIFIED", "NOT_REPRODUCED", "INCONCLUSIVE", "INVALID_ENVIRONMENT"]
+      "enum": [
+        "VERIFIED",
+        "NOT_REPRODUCED",
+        "INCONCLUSIVE",
+        "INVALID_ENVIRONMENT"
+      ]
     },
     "execution_role": {
-      "enum": ["vulnerable", "patched", "negative_control"]
+      "enum": [
+        "vulnerable",
+        "patched",
+        "negative_control"
+      ]
     },
     "limits": {
       "type": "object",
-      "required": ["timeout_seconds", "memory_mb", "processes", "disk_mb", "output_bytes"],
+      "required": [
+        "timeout_seconds",
+        "memory_mb",
+        "processes",
+        "disk_mb",
+        "output_bytes"
+      ],
       "properties": {
-        "timeout_seconds": { "type": "integer", "minimum": 1 },
-        "memory_mb": { "type": "integer", "minimum": 1 },
-        "processes": { "type": "integer", "minimum": 1 },
-        "disk_mb": { "type": "integer", "minimum": 1 },
-        "output_bytes": { "type": "integer", "minimum": 0 }
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memory_mb": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "processes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "disk_mb": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "output_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
       },
       "additionalProperties": false
     },
     "record_envelope": {
       "$comment": "Complete record schemas close the composed object with unevaluatedProperties false.",
       "type": "object",
-      "required": ["schema", "schema_version", "id", "case_id", "provenance"],
+      "required": [
+        "schema",
+        "id",
+        "case_id",
+        "provenance"
+      ],
       "properties": {
         "schema": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]*$"
         },
-        "schema_version": { "$ref": "#/$defs/schema_version" },
-        "id": { "$ref": "#/$defs/record_id" },
-        "case_id": { "$ref": "#/$defs/case_id" },
-        "provenance": { "$ref": "#/$defs/provenance" }
+        "id": {
+          "$ref": "#/$defs/record_id"
+        },
+        "case_id": {
+          "$ref": "#/$defs/case_id"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        }
       }
     }
   }

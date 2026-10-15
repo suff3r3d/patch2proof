@@ -1,46 +1,28 @@
-# Phase 1 schema registry
+# Schema registry
 
-`0.2.0/` is the current Phase 1 contract. `0.1.0/` remains unchanged for legacy
-validation. Both use JSON Schema Draft 2020-12 and identifiers of the form:
+The nine JSON Schema Draft 2020-12 files in this directory are the current
+contract. Eight describe persisted records; `common.schema.json` supplies shared
+definitions. Schema IDs use `urn:dacn:schema:<schema-name>` and records select
+one with their `schema` field. Records have no `schema_version` field, and the
+manifest has no `schema_versions` map.
 
-```text
-urn:dacn:schema:<schema-name>:<schema-version>
-```
-
-`common.schema.json` is the shared definition library. The eight persisted
-schemas cover sources, artifacts, normalized vulnerability and patch data, the
-paired environment, builds, executions, verification, and the replayable case
-manifest. The current version supports truthful partial failure
-packages, three-state verification checks, and required oracle/adapter identity.
-See [compatibility rules](../docs/schema-compatibility.md) and the
-[usage guide](../docs/schema-usage-guide.md).
+Patch2Proof writes a validated draft package at the end of a pipeline report.
+Its `dacn-package.json` index identifies the manifest and validation report.
+Only record types supported by actual run data are published; the adapter does
+not create synthetic build or execution records.
 
 Revision resolution and patch context belong to `vulnerability-record`.
-`execution-record` combines the requested invocation and observations for one run.
-`verification-result` combines expectations, checks and the reported verdict.
-Environment declarations remain separate from observed builds. Raw evidence is
-stored externally and referenced by records with provenance and opaque IDs.
-
-The schema family does not define separate retry, pipeline-run, benchmark,
-experiment or presentation records. Validation reports can be stored as artifacts;
-immutable record storage alone does not provide lifecycle orchestration.
+`execution-record` combines the requested invocation and observations for one
+run. `verification-result` combines expectations, checks, and the reported
+verdict. Environment declarations remain separate from observed builds. Raw
+evidence is stored externally and referenced by records with provenance and
+opaque IDs.
 
 The environment contract supports Docker only. Every environment specification
-must use `isolation.type: docker` and a digest-pinned image; host execution,
-other container engines, sandboxes, and virtual machines are invalid.
+must use `isolation.type: docker` and a digest-pinned image.
 
-Validation is intentionally offline. Consumers should register all files by
-their `$id` before validating a document; the test suite demonstrates this
-with `referencing.Registry`. Select the exact declared version; do not fall back
-to the newest version or relabel legacy records. Both families can coexist in
-one registry without ID collisions.
-
-Run contract tests in Docker using [the test instructions](../tests/schema/README.md).
-Dependency acquisition and offline test execution are separate phases.
-
-JSON Schema enforces document-local structure and many conditional rules.
-The [package validator](../docs/package-foundation.md) checks `0.2.0` reference
-integrity, paired identities, stored artifact hashes, ordering, and reported
-verdict consistency. Evidence interpretation and CVE-specific verdict derivation
-remain the responsibility of the future independent oracle. Schema validity
-alone does not establish these cross-record or evidence properties.
+Validation is offline. Consumers register these files by `$id` before validating
+a document; the test suite demonstrates this with `referencing.Registry`. The
+[package validator](../docs/package-foundation.md) checks references, paired
+identities, artifact hashes, ordering, and reported verdict consistency. Schema
+validity alone does not establish factual evidence or a vulnerability verdict.
