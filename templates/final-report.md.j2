@@ -14,7 +14,11 @@
 
 ## 2. Executive summary
 
+{% if report.proof_bundle.discovery_result and report.proof_bundle.discovery_result.status != "resolved" %}
+Revision discovery ended as `{{ report.proof_bundle.discovery_result.status }}`. No source pair was ingested or target executed. Reason: {{ report.proof_bundle.discovery_result.failure_reason }}
+{% else %}
 This report is generated from a pinned source pair and a constrained SafePoC workflow. The result must be interpreted together with the validation status and evidence manifest below.
+{% endif %}
 
 {% if report.review %}
 **Verdict:** `{{ report.review.verdict }}`  

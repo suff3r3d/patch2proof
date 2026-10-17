@@ -61,6 +61,12 @@ def build_proof_bundle(state: Mapping[str, Any], *, output_dir: Path) -> dict[st
         and source_grounded
     )
     artifact_names = ["case.json"]
+    artifact_names.extend(name for name in state.get("discovery_artifacts", [])
+                          if isinstance(name, str) and (
+                              name in {"discovery-nvd.json", "discovery-osv.json",
+                                       "revision-discovery-result.json"}
+                              or name in {f"discovery-commit-{index}.json" for index in range(8)}
+                          ))
     state_artifacts = {
         "raw_diff": "raw-patch.diff",
         "diff_summary": "patch-analysis.json",
@@ -68,6 +74,7 @@ def build_proof_bundle(state: Mapping[str, Any], *, output_dir: Path) -> dict[st
         "vulnerability_contract": "vulnerability-contract.json",
         "reproduction_graph": "reproduction-graph.json",
         "docker_spec": "docker-plan.json",
+        "environment_profile": "environment-profile.json",
         "images": "images.json",
         "safe_poc_plan": "safe-poc-plan.json",
         "safe_poc": "safepoc.json",
@@ -80,6 +87,15 @@ def build_proof_bundle(state: Mapping[str, Any], *, output_dir: Path) -> dict[st
     )
     if state.get("raw_diff") is not None:
         artifact_names.append("source-identities.json")
+    if state.get("images") is not None and (output_dir / "source-pair.json").exists():
+        artifact_names.append("source-pair.json")
+    artifact_names.extend(
+        name for name in (
+            "build-vulnerable.log", "build-fixed.log",
+            "image-vulnerable.json", "image-fixed.json",
+        )
+        if (output_dir / name).exists()
+    )
     reasoning_stages = {item.get("stage") for item in reasoning}
     if "hypothesis" in reasoning_stages:
         artifact_names.append("reasoning-initial.json")
@@ -107,7 +123,13 @@ def build_proof_bundle(state: Mapping[str, Any], *, output_dir: Path) -> dict[st
     payload = {
         "schema_version": "proof-bundle/0.4.0",
         "case_id": (state.get("case") or {}).get("case_id"),
-        "claim_status": "confirmed" if confirmed else "candidate",
+        "claim_status": (
+            "not_executed"
+            if state.get("discovery_result", {}).get("status") in {"ambiguous", "failed"}
+            else "blocked"
+            if state.get("status") in {"blocked", "error", "environment_review_required"}
+            else "confirmed" if confirmed else "candidate"
+        ),
         "claim_rule": (
             "confirmed iff skeptic verdict=confirmed, all six coverage gates are true, "
             "validation is non-simulated, violations is empty, and every reasoning artifact "
@@ -119,6 +141,7 @@ def build_proof_bundle(state: Mapping[str, Any], *, output_dir: Path) -> dict[st
         "reasoning": reasoning,
         "reasoning_provider_backed": reasoning_provider_backed,
         "source_grounded": source_grounded,
+        "discovery_result": state.get("discovery_result"),
         "artifact_names": present,
         "artifact_paths": [str(output_dir / name) for name in present],
         "graph_id": (state.get("reproduction_graph") or {}).get("graph_id"),

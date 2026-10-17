@@ -9,10 +9,12 @@ define the current record contracts; historical designs do not override them.
 | [Schema usage](schema-usage-guide.md) | How producers populate the eight current record types. |
 | [Schema compatibility](schema-compatibility.md) | Historical version differences; the active schemas are unversioned. |
 | [Revision discovery contract](revision-discovery-contract.md) | CVE-only input and evidence-backed candidate revision pairs. |
+| [Environment reproduction](environment-reproduction.md) | Paired source preparation, offline Docker builds, and review boundaries. |
 | [Verification and execution contract](verification-contract.md) | Evidence requirements, verdict rules, adapter boundaries and paired execution. |
 
-Storage and package validation are implemented. Automated intake, builders,
-execution and the CVE-specific oracle are not implied by valid package records.
+Storage and package validation are implemented. Paired Docker builds require a
+reviewed case and offline inputs; target execution and a CVE-specific oracle
+are not implied by valid package records.
 Read [AGENTS.md](../AGENTS.md) for repository rules and
 [test instructions](../tests/schema/README.md) for Docker-only checks.
 

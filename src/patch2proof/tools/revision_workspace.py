@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import tarfile
@@ -18,7 +19,7 @@ def _safe_member(member: tarfile.TarInfo) -> bool:
     return not (link.is_absolute() or ".." in link.parts)
 
 
-def _archive_revision(repo: Path, ref: str, destination: Path, timeout: int) -> None:
+def _archive_revision(repo: Path, ref: str, destination: Path, timeout: int) -> str:
     safe_ref = validate_ref(ref)
     temporary_tar = destination.parent / f".{destination.name}.tar"
     try:
@@ -34,6 +35,8 @@ def _archive_revision(repo: Path, ref: str, destination: Path, timeout: int) -> 
             raise RuntimeError(
                 result.stderr.decode(errors="replace").strip() or "git archive failed"
             )
+        with temporary_tar.open("rb") as stream:
+            archive_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
         with tarfile.open(temporary_tar, "r") as archive:
             members = archive.getmembers()
             if not all(_safe_member(member) for member in members):
@@ -42,6 +45,7 @@ def _archive_revision(repo: Path, ref: str, destination: Path, timeout: int) -> 
                 archive.extractall(destination, filter="data")
             except TypeError:  # Python 3.11 compatibility
                 archive.extractall(destination)
+        return archive_sha256
     finally:
         if temporary_tar.exists():
             temporary_tar.unlink()
@@ -69,16 +73,18 @@ def materialize_pair(
     allowed_destination.mkdir(parents=True, exist_ok=True)
     contexts: dict[str, str] = {}
     identities: dict[str, dict[str, str]] = {}
+    archive_hashes: dict[str, str] = {}
     for role, ref in (("vulnerable", vulnerable_ref), ("fixed", fixed_ref)):
         context = allowed_destination / role
         context.mkdir(parents=True, exist_ok=True)
-        _archive_revision(repo, ref, context, timeout)
+        archive_hashes[role] = _archive_revision(repo, ref, context, timeout)
         contexts[role] = str(context)
         identities[role] = git_identity(str(repo), str(allowed_root), ref)
     manifest: dict[str, object] = {
         "repo": str(repo),
         "contexts": contexts,
         "identities": identities,
+        "archive_sha256": archive_hashes,
     }
     (allowed_destination / "source-pair.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"

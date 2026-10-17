@@ -3,15 +3,15 @@
 The JSON Schema Draft 2020-12 files in this directory are the current
 contract. Eight describe persisted records; `common.schema.json` supplies shared
 definitions. `cve-discovery-request.schema.json` and
-`revision-discovery-result.schema.json` define a pre-ingestion interface for
-future CVE-led revision discovery. Schema IDs use
+`revision-discovery-result.schema.json` define the pre-ingestion interface for
+CVE-led revision discovery. Schema IDs use
 `urn:dacn:schema:<schema-name>` and persisted records select one with their
 `schema` field. Records have no `schema_version` field, and the manifest has no
 `schema_versions` map.
 
 See the [discovery contract](../docs/revision-discovery-contract.md) for the
-candidate evidence and unresolved-result rules. The discovery schemas do not
-yet change the CLI or graph.
+candidate evidence and unresolved-result rules. The CLI and graph now use this
+interface for CVE-only dry runs.
 
 Patch2Proof writes a validated draft package at the end of a pipeline report.
 Its `dacn-package.json` index identifies the manifest and validation report.

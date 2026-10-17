@@ -3,21 +3,82 @@
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 
 import typer
 from rich.console import Console
 
 from .config import load_case
-from .graph import invoke_case
+from .evidence import write_json
+from .graph import build_node, environment_plan_node, invoke_case
+from .models import case_output_dir
+from .revision_discovery import CVE_PATTERN
 
 app = typer.Typer(help="Patch2Proof: evidence-grounded N-day reproduction pipeline")
 console = Console()
 
 
+@app.command("recreate-environment")
+def recreate_environment(
+    case_file: str,
+    build: bool = typer.Option(False, help="Build the reviewed vulnerable/fixed Docker pair."),
+):
+    """Inspect a pinned case, then optionally build its isolated image pair."""
+
+    if CVE_PATTERN.fullmatch(case_file):
+        raise typer.BadParameter(
+            "Review the discovered revisions and use a pinned case manifest for environment builds"
+        )
+    case = load_case(case_file)
+    if not case.policy.authorized or case.policy.network.value != "none":
+        raise typer.BadParameter("Case must be authorized with network: none")
+    if build and not case.policy.allow_docker_build:
+        raise typer.BadParameter("Enable allow_docker_build in the reviewed case policy")
+    run_id = uuid.uuid4().hex[:12]
+    run_output_root = Path(case.output_dir).expanduser().resolve() / "environment-runs" / run_id
+    case = case.model_copy(update={"output_dir": str(run_output_root)})
+    state = {"case": case.model_dump(mode="json"), "events": []}
+    plan = environment_plan_node(state)
+    output_dir = case_output_dir(case)
+    write_json(output_dir / "case.json", case.model_dump(mode="json"))
+    if plan.get("status") != "planned":
+        write_json(output_dir / "environment-reproduction.json", {
+            "status": plan.get("status"), "build_requested": build,
+            "errors": plan.get("errors", []), "images": [],
+        })
+        console.print(f"[bold]environment:[/bold] {plan.get('status')}")
+        console.print_json(json.dumps(plan.get("errors", [])))
+        console.print(f"[bold]artifacts:[/bold] {output_dir}")
+        raise typer.Exit(code=1)
+    if not build:
+        write_json(output_dir / "environment-reproduction.json", {
+            "status": "planned", "build_requested": False,
+            "errors": [], "images": [],
+        })
+        console.print("[bold]environment:[/bold] planned; no Docker build requested")
+        console.print(f"[bold]artifacts:[/bold] {output_dir}")
+        return
+    result = build_node({**state, **plan})
+    write_json(output_dir / "environment-reproduction.json", {
+        "status": result.get("status"), "build_requested": True,
+        "errors": result.get("errors", []), "images": result.get("images", []),
+    })
+    console.print(f"[bold]environment:[/bold] {result.get('status')}")
+    console.print(f"[bold]artifacts:[/bold] {output_dir}")
+    if result.get("errors"):
+        console.print_json(json.dumps(result["errors"]))
+        raise typer.Exit(code=1)
+    for image in result.get("images", []):
+        console.print(f"[bold]{image['role']}:[/bold] {image['digest']}")
+
+
 @app.command()
 def inspect(case_file: str):
     """Validate and print a case manifest without executing tools."""
+    if CVE_PATTERN.fullmatch(case_file):
+        console.print_json(json.dumps({"cve_id": case_file}, indent=2))
+        return
     case = load_case(case_file)
     console.print_json(json.dumps(case.model_dump(mode="json"), indent=2))
 
@@ -33,6 +94,8 @@ def run(
     ),
 ):
     """Run the complete LangGraph workflow."""
+    if CVE_PATTERN.fullmatch(case_file) and not dry_run:
+        raise typer.BadParameter("CVE-only runs are dry-run only; review a pinned case first")
     result = invoke_case(
         case_file,
         dry_run=dry_run,
@@ -41,6 +104,14 @@ def run(
     )
     console.print(f"[bold]status:[/bold] {result.get('status')}")
     console.print(f"[bold]phase:[/bold] {result.get('phase')}")
+    discovery = result.get("discovery_result")
+    if discovery:
+        console.print(f"[bold]revision discovery:[/bold] {discovery['status']}")
+        if discovery.get("selected"):
+            pair = discovery["selected"]
+            console.print(f"[bold]repository:[/bold] {pair['repository_url']}")
+            console.print(f"[bold]vulnerable:[/bold] {pair['vulnerable_commit']}")
+            console.print(f"[bold]fixed:[/bold] {pair['fixed_commit']}")
     if result.get("report_path"):
         console.print(f"[bold]report:[/bold] {result['report_path']}")
     if result.get("errors"):

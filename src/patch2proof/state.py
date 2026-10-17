@@ -7,6 +7,7 @@ from typing import Annotated, TypedDict
 
 
 class ResearchState(TypedDict, total=False):
+    cve_id: str
     case: dict
     phase: str
     status: str
@@ -19,6 +20,7 @@ class ResearchState(TypedDict, total=False):
     context_sufficiency: dict
     retrieved_context: list[dict]
     docker_spec: dict
+    environment_profile: dict
     images: list[dict]
     safe_poc: dict
     safe_poc_plan: dict
@@ -35,6 +37,9 @@ class ResearchState(TypedDict, total=False):
     current_attempt_id: str
     proof_bundle: dict
     dacn_package: dict
+    discovery_request: dict
+    discovery_result: dict
+    discovery_artifacts: list[str]
 
     evidence: Annotated[list[dict], add]
     hypotheses: Annotated[list[dict], add]

@@ -49,6 +49,12 @@ def _envelope(kind: str, identifier: str, case_id: str, created_at: str,
 
 def _artifact_names(state: Mapping[str, Any]) -> list[str]:
     names = ["case.json", "proof-bundle.json", "final-report.json", "final-report.md"]
+    names.extend(name for name in state.get("discovery_artifacts", [])
+                 if isinstance(name, str) and (
+                     name in {"discovery-nvd.json", "discovery-osv.json",
+                              "revision-discovery-result.json"}
+                     or name in {f"discovery-commit-{index}.json" for index in range(8)}
+                 ))
     for key, filename in (
         ("raw_diff", "raw-patch.diff"),
         ("raw_diff", "source-identities.json"),
@@ -59,6 +65,7 @@ def _artifact_names(state: Mapping[str, Any]) -> list[str]:
         ("safe_poc_plan", "safe-poc-plan.json"),
         ("safe_poc", "safepoc.json"),
         ("docker_spec", "docker-plan.json"),
+        ("environment_profile", "environment-profile.json"),
         ("images", "images.json"),
         ("validation", "validation.json"),
         ("coverage", "coverage.json"),
@@ -82,7 +89,17 @@ def publish_dacn_package(
     records: list[dict[str, Any]] = []
     artifacts: dict[str, dict[str, str]] = {}
 
-    for filename in _artifact_names(state):
+    artifact_names = _artifact_names(state)
+    if (output_dir / "source-pair.json").exists():
+        artifact_names.append("source-pair.json")
+    artifact_names.extend(
+        name for name in (
+            "build-vulnerable.log", "build-fixed.log",
+            "image-vulnerable.json", "image-fixed.json",
+        )
+        if (output_dir / name).exists()
+    )
+    for filename in artifact_names:
         identifier = f"artifact-{run_id}-{filename}"
         with open_case_file(output_dir, filename) as stream:
             stored = store.put_artifact(

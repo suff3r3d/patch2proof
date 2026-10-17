@@ -1,6 +1,6 @@
 # CVE-led revision discovery contract
 
-This is the pre-ingestion interface for future discovery specialists. The input
+This is the pre-ingestion interface for discovery specialists. The input
 is a [CVE discovery request](../schemas/cve-discovery-request.schema.json) with
 only `cve_id` required. An optional HTTPS `repository_hint` narrows the search;
 it does not supply a trusted repository identity or revisions.
@@ -18,13 +18,28 @@ recorded as `failed` or `not_evaluated`.
 `failed` gives a reason and may have no candidates. Neither a candidate nor a
 resolved revision pair is a vulnerability reproduction verdict.
 
-The schema checks document shape. The future verifier must perform the Git and
-source checks itself, confirm that `selected` equals one of `candidates`, and
-reject unsupported or conflicting evidence. It must hash and retain retrieved
-source bytes, avoid arbitrary network destinations, and pass only verified
-immutable revisions to `ingest`. Discovery network access is separate from
-Docker target execution, which remains `network: none`.
+The schema checks document shape. The verifier performs the Git and source
+checks, confirms that `selected` equals one of `candidates`, and rejects
+unsupported or conflicting evidence. It hashes and retains retrieved metadata
+bytes and passes only verified immutable revisions to `ingest`. Discovery
+network access is separate from Docker target execution, which remains
+`network: none`.
 
-The current CLI still requires a pinned repository and two refs. These schemas
-specify the interface for the discovery step; no retrieval or graph integration
-is implemented by this contract change.
+The current implementation accepts a CVE ID directly through `p2p run`. It
+retrieves the matching NVD record, falls back to OSV when needed, and accepts
+direct GitHub commit references. It checks each referenced commit through the
+GitHub API, then fetches a single
+unambiguous fix and its parent into a case-scoped Git repository. It verifies
+the local commits, direct-parent relation, and nonempty diff before ingestion.
+Automatic selection requires an NVD `Patch` tag, OSV `FIX` type, or Git range
+`fixed` event. An untagged commit link remains a candidate for review.
+Multiple fix references, merge commits, unsupported hosts, missing evidence,
+or failed checks remain unresolved. A resolved pair is still not proof that
+the parent is vulnerable; runtime reproduction remains a separate stage.
+
+CVE-only runs are dry-run only. A reviewed case manifest with build settings,
+adapter, and explicit policy is required before target execution. Metadata
+retrieval is bounded to the NVD, OSV, and GitHub API hosts; Git fetch uses only a
+canonical GitHub repository URL derived from a validated commit reference.
+The fetch is shallow and limited by timeout and a post-fetch repository size
+check; repository content is still treated as untrusted data.

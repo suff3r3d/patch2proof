@@ -18,6 +18,7 @@ import json
 import os
 from pathlib import PurePosixPath
 from typing import Any, Callable, Literal, Mapping, TypeVar
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,8 +30,8 @@ from .models import (
     RepairDecision,
     ReproductionGraph,
     SafePoCPlan,
-    SourceQuery,
     Skill,
+    SourceQuery,
     TypedFeedback,
     VulnerabilityContract,
 )
@@ -155,6 +156,14 @@ def _fingerprint(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _uses_deepseek_api() -> bool:
+    """Detect the explicitly configured DeepSeek OpenAI-compatible endpoint."""
+
+    base_url = os.getenv("OPENAI_API_BASE") or os.getenv("OPENAI_BASE_URL") or ""
+    parsed = urlsplit(base_url)
+    return parsed.scheme == "https" and parsed.hostname == "api.deepseek.com"
+
+
 def _invoke_structured(
     mode: ReasoningMode,
     schema: type[T],
@@ -198,9 +207,19 @@ def _invoke_structured(
     else:
         raise ReasoningConfigurationError(f"Structured provider cannot be {mode.value}")
 
+    deepseek_compat = mode == ReasoningMode.OPENAI and _uses_deepseek_api()
     prompt = f"SYSTEM:\n{system}\n\nHUMAN:\n{human}\n\nReturn only the requested structured object."
+    if deepseek_compat:
+        prompt += "\nReturn a JSON object matching this schema: " + json.dumps(
+            schema.model_json_schema(), separators=(",", ":")
+        )
     try:
-        structured = model.with_structured_output(schema)
+        if deepseek_compat:
+            # DeepSeek's Chat Completions API accepts json_object, while
+            # LangChain's default json_schema response_format is rejected.
+            structured = model.with_structured_output(schema, method="json_mode")
+        else:
+            structured = model.with_structured_output(schema)
         result = structured.invoke(prompt)
         normalized = result if isinstance(result, schema) else schema.model_validate(result)
     except Exception as exc:

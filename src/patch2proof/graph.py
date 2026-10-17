@@ -9,6 +9,8 @@ operation.
 from __future__ import annotations
 
 import os
+import subprocess
+import uuid
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -17,7 +19,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from .config import load_case
-from .dacn_bridge import publish_dacn_package
+from .dacn_bridge import _schema_root, publish_dacn_package
+from .environment_profile import inspect_environment_pair
 from .evidence import write_json
 from .feedback import (
     application_for,
@@ -61,12 +64,13 @@ from .reproduction_graph import (
     next_uncovered_edge,
 )
 from .retrieval import retrieve_context
+from .revision_discovery import CVE_PATTERN, discover_revisions
 from .safe_poc import generate_safe_poc
 from .skill_memory import SkillMemory
 from .source_analysis import build_source_context, execute_source_query
 from .state import ResearchState
 from .tools.diff_analysis import analyze_diff
-from .tools.docker_worker import DockerWorker
+from .tools.docker_worker import DockerWorker, dockerfile_base_image
 from .tools.repo import fixture_diff, git_diff, git_identity
 
 
@@ -113,24 +117,116 @@ def _reasoning_settings(state: ResearchState) -> dict[str, Any]:
     }
 
 
+def _discovery_case(cve_id: str) -> CaseManifest:
+    if not CVE_PATTERN.fullmatch(cve_id):
+        raise ValueError("CVE discovery requires a valid CVE ID")
+    output_root = Path("artifacts").resolve()
+    return CaseManifest.model_validate({
+        "case_id": cve_id,
+        "title": f"Revision discovery for {cve_id}",
+        "repository_path": str(output_root / cve_id),
+        "vulnerable_ref": "UNRESOLVED",
+        "fixed_ref": "UNRESOLVED",
+        "policy": {
+            "authorized": True,
+            "network": "none",
+            "allowed_repo_root": str(output_root / cve_id),
+            "allowed_artifact_root": str(output_root),
+        },
+    })
+
+
 def preflight_node(state: ResearchState) -> ResearchState:
-    case = _case(state)
-    write_json(_out(state) / "case.json", case.model_dump(mode="json"))
+    updates: ResearchState = {}
+    if not state.get("case"):
+        cve_id = state.get("cve_id") or (state.get("discovery_request") or {}).get("cve_id")
+        if not isinstance(cve_id, str):
+            raise ValueError("Graph input requires a case or CVE ID")
+        case = _discovery_case(cve_id)
+        request = dict(state.get("discovery_request") or {"cve_id": cve_id})
+        if request.get("cve_id") != cve_id:
+            raise ValueError("Conflicting CVE IDs in graph input")
+        updates = {
+            "case": case.model_dump(mode="json"),
+            "discovery_request": request,
+            "events": [{"node": "preflight", "dry_run": True, "auto_approve": True}],
+        }
+    else:
+        case = _case(state)
+    output_dir = case_output_dir(case)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    write_json(output_dir / "case.json", case.model_dump(mode="json"))
     if not case.policy.authorized:
-        return {"phase": "preflight", "status": "blocked", "errors": ["Case is not authorized"]}
+        return {**updates, "phase": "preflight", "status": "blocked",
+                "errors": ["Case is not authorized"]}
     if case.policy.network.value != "none":
-        return {
+        return {**updates,
             "phase": "preflight",
             "status": "blocked",
             "errors": [
                 "Default project policy requires network=none; use an explicit mock-only adapter"
             ],
         }
-    return {"phase": "preflight", "status": "ready", "events": [{"node": "preflight", "ok": True}]}
+    return {**updates, "phase": "preflight", "status": "ready",
+            "events": [*updates.get("events", []), {"node": "preflight", "ok": True}]}
 
 
-def route_preflight(state: ResearchState) -> Literal["ingest", "blocked"]:
-    return "ingest" if state.get("status") == "ready" else "blocked"
+def route_preflight(state: ResearchState) -> Literal["discovery", "ingest", "blocked"]:
+    if state.get("status") != "ready":
+        return "blocked"
+    return "discovery" if state.get("discovery_request") else "ingest"
+
+
+def discovery_node(state: ResearchState) -> ResearchState:
+    request = state["discovery_request"]
+    case = _case(state)
+    outcome = discover_revisions(
+        request["cve_id"], _out(state), _schema_root(),
+        repository_hint=request.get("repository_hint"),
+    )
+    write_json(_out(state) / "revision-discovery-result.json", outcome.result)
+    artifacts = [*outcome.artifacts, "revision-discovery-result.json"]
+    if outcome.result["status"] != "resolved" or outcome.repository_path is None:
+        return {
+            "phase": "discovery", "status": "unresolved",
+            "discovery_result": outcome.result, "discovery_artifacts": artifacts,
+            "errors": [outcome.result["failure_reason"]],
+        }
+    selected = outcome.result["selected"]
+    try:
+        profile = inspect_environment_pair(
+            outcome.repository_path, case.policy.allowed_repo_root,
+            selected["vulnerable_commit"], selected["fixed_commit"],
+        )
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        profile = {
+            "status": "review_required", "language": "unknown",
+            "build_system": "custom", "review_reasons": [str(exc)],
+            "default_template_ready": False,
+        }
+    write_json(_out(state) / "environment-profile.json", profile)
+    resolved_case = CaseManifest.model_validate({
+        **case.model_dump(mode="json"),
+        "repository_path": str(outcome.repository_path),
+        "vulnerable_ref": selected["vulnerable_commit"],
+        "fixed_ref": selected["fixed_commit"],
+        "language": profile["language"],
+        "build_system": profile["build_system"],
+    })
+    write_json(_out(state) / "case.json", resolved_case.model_dump(mode="json"))
+    return {
+        "phase": "discovery", "status": "resolved",
+        "case": resolved_case.model_dump(mode="json"),
+        "discovery_result": outcome.result, "discovery_artifacts": artifacts,
+        "environment_profile": profile,
+        "events": [{"node": "discovery", "repository": selected["repository_url"],
+                    "vulnerable": selected["vulnerable_commit"],
+                    "fixed": selected["fixed_commit"]}],
+    }
+
+
+def route_discovery(state: ResearchState) -> Literal["ingest", "report"]:
+    return "ingest" if state.get("status") == "resolved" else "report"
 
 
 def ingest_node(state: ResearchState) -> ResearchState:
@@ -468,35 +564,91 @@ def route_poc_reasoning(state: ResearchState) -> Literal["environment_plan", "re
 
 def environment_plan_node(state: ResearchState) -> ResearchState:
     case = _case(state)
+    profile = state.get("environment_profile")
+    if profile is None and case.source_mode == "git":
+        try:
+            profile = inspect_environment_pair(
+                case.repository_path, case.policy.allowed_repo_root,
+                case.vulnerable_ref, case.fixed_ref,
+            )
+        except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+            return {
+                "phase": "environment_plan", "status": "environment_review_required",
+                "errors": [f"Could not inspect pinned build metadata: {exc}"],
+            }
+        write_json(_out(state) / "environment-profile.json", profile)
+    elif profile is None:
+        profile = {
+            "status": "fixture",
+            "language": case.language,
+            "build_system": case.build_system,
+            "review_reasons": ["Fixture input does not identify a Git revision pair"],
+        }
+        write_json(_out(state) / "environment-profile.json", profile)
+    language = case.language if case.language != "unknown" else (
+        profile or {}
+    ).get("language", "unknown")
+    if language == "unknown" and not case.dockerfile:
+        return {
+            "phase": "environment_plan", "status": "environment_review_required",
+            "environment_profile": profile or {},
+            "errors": ["Build system could not be identified; supply a reviewed case Dockerfile"],
+        }
     context_dir = str(Path(case.repository_path).expanduser().resolve())
     defaults = {
         "python": ("templates/docker/python.Dockerfile", "python:3.12-slim"),
         "node": ("templates/docker/node.Dockerfile", "node:22-bookworm-slim"),
         "java": ("templates/docker/java.Dockerfile", "eclipse-temurin:21-jre"),
     }
-    default_dockerfile, default_base = defaults.get(
-        case.language,
-        ("templates/docker/python.Dockerfile", "python:3.12-slim"),
-    )
+    if language not in defaults and not case.dockerfile:
+        return {
+            "phase": "environment_plan", "status": "environment_review_required",
+            "environment_profile": profile or {},
+            "errors": [f"No default Docker template for {language}; supply a reviewed Dockerfile"],
+        }
+    default_dockerfile, _default_base = defaults.get(language, ("", ""))
     dockerfile = case.dockerfile or str(Path(default_dockerfile).resolve())
+    reviewed_dockerfile = bool(case.dockerfile) and Path(case.dockerfile).resolve() != (
+        Path(default_dockerfile).resolve() if default_dockerfile else None
+    )
+    if profile and not profile.get("default_template_ready") and not reviewed_dockerfile:
+        return {
+            "phase": "environment_plan", "status": "environment_review_required",
+            "environment_profile": profile,
+            "errors": profile.get("default_template_reasons") or profile.get("review_reasons") or [
+                "The default Docker template cannot reproduce this project environment"
+            ],
+        }
+    try:
+        base_image = dockerfile_base_image(Path(dockerfile))
+    except (OSError, ValueError) as exc:
+        return {
+            "phase": "environment_plan", "status": "environment_review_required",
+            "environment_profile": profile or {}, "errors": [str(exc)],
+        }
     spec = DockerSpec(
         case_id=case.case_id,
-        language=case.language,
+        language=language,
         context_dir=context_dir,
         dockerfile_path=str(Path(dockerfile).expanduser().resolve()),
         vulnerable_ref=case.vulnerable_ref,
         fixed_ref=case.fixed_ref,
         build_network=case.policy.network,
         runtime_network=case.policy.network,
-        base_image=default_base,
+        base_image=base_image,
         labels={"org.patch2proof.case": case.case_id, "org.patch2proof.role": "pair"},
     )
     write_json(_out(state) / "docker-plan.json", spec.model_dump(mode="json"))
     return {
         "phase": "environment_plan",
         "status": "planned",
+        "environment_profile": profile or {},
         "docker_spec": spec.model_dump(mode="json"),
     }
+
+
+def route_environment_plan(state: ResearchState) -> Literal["build_approval", "report"]:
+    return "build_approval" if state.get("status") == "planned" else "report"
 
 
 def build_approval_node(state: ResearchState) -> ResearchState:
@@ -520,35 +672,54 @@ def build_approval_node(state: ResearchState) -> ResearchState:
     }
 
 
-def route_build_approval(state: ResearchState) -> Literal["build", "poc"]:
-    return "build" if state.get("status") == "approved" else "poc"
+def route_build_approval(state: ResearchState) -> Literal["build", "report"]:
+    return "build" if state.get("status") == "approved" else "report"
 
 
 def build_node(state: ResearchState) -> ResearchState:
     case = _case(state)
     spec = DockerSpec.model_validate(state["docker_spec"])
     dry_run = any(event.get("dry_run") for event in state.get("events", []))
+    if not dry_run and not case.policy.allow_docker_build:
+        return {
+            "phase": "build",
+            "status": "blocked",
+            "errors": ["Case policy does not allow Docker builds"],
+        }
+    if not dry_run and case.source_mode != "git":
+        return {
+            "phase": "build", "status": "blocked",
+            "errors": ["Real paired builds require two pinned Git revisions"],
+        }
     worker = DockerWorker(
-        case.policy, _out(state), dry_run=dry_run or not case.policy.allow_docker_build
+        case.policy, _out(state), dry_run=dry_run
     )
     try:
         if not dry_run and case.source_mode == "git":
             from .tools.revision_workspace import materialize_pair
 
+            build_run_id = uuid.uuid4().hex[:12]
             pair = materialize_pair(
                 case.repository_path,
                 case.policy.allowed_repo_root,
                 case.vulnerable_ref,
                 case.fixed_ref,
-                _out(state) / "source-pair",
+                _out(state) / "source-pairs" / build_run_id,
                 artifact_root=case.policy.allowed_artifact_root,
                 timeout=case.policy.timeout_seconds,
             )
             contexts = cast(dict[str, str], pair["contexts"])
+            archive_hashes = cast(dict[str, str], pair["archive_sha256"])
             spec = spec.model_copy(
                 update={
                     "vulnerable_context_dir": contexts["vulnerable"],
                     "fixed_context_dir": contexts["fixed"],
+                    "labels": {
+                        **spec.labels,
+                        "org.patch2proof.run_id": build_run_id,
+                        "org.patch2proof.vulnerable.archive_sha256": archive_hashes["vulnerable"],
+                        "org.patch2proof.fixed.archive_sha256": archive_hashes["fixed"],
+                    },
                 }
             )
             write_json(_out(state) / "source-pair.json", pair)
@@ -562,6 +733,10 @@ def build_node(state: ResearchState) -> ResearchState:
         }
     except Exception as exc:
         return {"phase": "build", "status": "error", "errors": [str(exc)]}
+
+
+def route_build(state: ResearchState) -> Literal["poc", "report"]:
+    return "poc" if state.get("status") == "built" else "report"
 
 
 def poc_node(state: ResearchState) -> ResearchState:
@@ -1028,7 +1203,7 @@ def report_node(state: ResearchState) -> ResearchState:
         feedback=state.get("feedback", []),
         skill_applications=state.get("skill_applications", []),
         reasoning=state.get("reasoning", []),
-        source_context=state.get("source_context"),
+        source_context=state.get("source_context") or None,
         proof_bundle=bundle,
     )
     dacn_package = publish_dacn_package(case, state, _out(state))
@@ -1049,6 +1224,7 @@ def build_graph(*, local_checkpointer: bool = False):
     builder = StateGraph(ResearchState)
     for name, node in {
         "preflight": preflight_node,
+        "discovery": discovery_node,
         "ingest": ingest_node,
         "analysis": analysis_node,
         "source_context": source_context_node,
@@ -1076,6 +1252,7 @@ def build_graph(*, local_checkpointer: bool = False):
 
     builder.add_edge(START, "preflight")
     builder.add_conditional_edges("preflight", route_preflight)
+    builder.add_conditional_edges("discovery", route_discovery)
     builder.add_conditional_edges("ingest", route_ingest)
     builder.add_edge("analysis", "source_context")
     builder.add_conditional_edges("source_context", route_source_context)
@@ -1084,9 +1261,9 @@ def build_graph(*, local_checkpointer: bool = False):
     builder.add_edge("knowledge", "skill_retrieval")
     builder.add_edge("skill_retrieval", "poc_reasoning")
     builder.add_conditional_edges("poc_reasoning", route_poc_reasoning)
-    builder.add_edge("environment_plan", "build_approval")
+    builder.add_conditional_edges("environment_plan", route_environment_plan)
     builder.add_conditional_edges("build_approval", route_build_approval)
-    builder.add_edge("build", "poc")
+    builder.add_conditional_edges("build", route_build)
     builder.add_edge("poc", "attempt_plan")
     builder.add_edge("attempt_plan", "execution_approval")
     builder.add_conditional_edges("execution_approval", route_execution_approval)
@@ -1111,11 +1288,16 @@ def initial_state(
     max_attempts: int | None = None,
     reasoning_mode: str | None = None,
 ) -> ResearchState:
-    case = load_case(case_path)
+    if CVE_PATTERN.fullmatch(case_path):
+        case = _discovery_case(case_path)
+        discovery_request = {"cve_id": case_path}
+    else:
+        case = load_case(case_path)
+        discovery_request = None
     total_attempts = (
         max_attempts if max_attempts is not None else 1 + case.policy.max_repair_attempts
     )
-    return {
+    state: ResearchState = {
         "case": case.model_dump(mode="json"),
         "phase": "created",
         "status": "created",
@@ -1128,11 +1310,13 @@ def initial_state(
         "feedback": [],
         "skill_applications": [],
         "reasoning": [],
-        "source_context": {},
         "context_sufficiency": {},
         "errors": [],
         "events": [{"node": "cli", "auto_approve": auto_approve}],
     }
+    if discovery_request:
+        state["discovery_request"] = discovery_request
+    return state
 
 
 def invoke_case(
@@ -1141,6 +1325,8 @@ def invoke_case(
     auto_approve: bool = False,
     reasoning_mode: str | None = None,
 ) -> dict:
+    if CVE_PATTERN.fullmatch(case_path) and not dry_run:
+        raise ValueError("CVE-only runs are dry-run only; review a pinned case before execution")
     state = initial_state(
         case_path,
         auto_approve=auto_approve,

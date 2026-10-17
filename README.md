@@ -90,6 +90,14 @@ export P2P_OLLAMA_MODEL=<reviewed-model>
 p2p run examples/demo_case.yaml --dry-run --auto-approve
 ```
 
+For the DeepSeek API through the existing OpenAI-compatible adapter, put
+`P2P_LLM_MODE=openai`, `P2P_MODEL=deepseek-flash`,
+`OPENAI_API_KEY=<DeepSeek API key>`, and
+`OPENAI_BASE_URL=https://api.deepseek.com` in a local `.env`, then run
+`uv run --extra llm --env-file .env p2p run <CVE-ID> --dry-run --auto-approve`.
+The adapter uses DeepSeek's JSON object format for typed reasoning output.
+The evidence still records the compatibility provider as `openai`.
+
 For dependency-light offline tests only:
 
 ```bash
@@ -154,6 +162,35 @@ docker compose -f deploy/docker-compose.local-ai.yaml up -d
 Then set `P2P_LLM_MODE=ollama`, `P2P_OLLAMA_MODEL=<reviewed-model>` and `OLLAMA_BASE_URL=http://localhost:11434`. See [`docs/agent-reasoning.md`](docs/agent-reasoning.md).
 
 ## Real case workflow
+
+### Start with a CVE ID
+
+For CVEs whose NVD or OSV record identifies one GitHub fixing commit, the
+pipeline can discover a candidate source pair before patch ingestion:
+
+```bash
+uv run p2p inspect CVE-YYYY-NNNN
+uv run p2p run CVE-YYYY-NNNN --dry-run --auto-approve
+```
+
+Configure a reasoning provider as described above. Discovery itself retrieves
+public metadata from NVD (with OSV fallback) and GitHub, then fetches the
+referenced fix and its parent into `artifacts/<CVE-ID>/`. The reference must
+identify a patch or fix; an untagged commit link remains a candidate for review.
+The target Docker policy remains `network: none`. Inspect
+`revision-discovery-result.json`, the saved NVD or OSV response, commit
+responses, `raw-patch.diff`, and `final-report.md`. Ambiguous or
+unsupported cases stop with `not_executed` and a reason. A discovered parent
+is a pre-fix candidate, not proof of affected behavior. CVE-only runs cannot
+use `--no-dry-run`; prepare a reviewed pinned case before real execution. See
+the [discovery contract](docs/revision-discovery-contract.md).
+
+To inspect or build the two pinned environments independently of model
+reasoning, use `p2p recreate-environment path/to/reviewed-case.yaml` and add
+`--build` when the case permits Docker builds. See the
+[environment reproduction guide](docs/environment-reproduction.md).
+
+### Reviewed execution
 
 1. Create a case manifest from [`examples/case-template.yaml`](examples/case-template.yaml).
 2. Pin vulnerable and fixed Git references.
