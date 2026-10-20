@@ -1,158 +1,103 @@
 "use client";
 
 import React, { useState } from "react";
-import {
-  Activity,
-  Play,
-  CheckCircle2,
-  Layers,
-  Shield,
-} from "lucide-react";
 
-const WORKFLOW_STAGES = [
-  {
-    phase: "Phase 1: Ingestion & Slicing",
-    nodes: [
-      { id: "fetch_patch", label: "fetch_patch", status: "completed", desc: "Parsed diff hunks and symbols" },
-      { id: "case_init", label: "case_init", status: "completed", desc: "Initialized case state and isolated workspaces" },
-      { id: "slice_source", label: "slice_source", status: "completed", desc: "Extracted pinned source slices & AST bounds" },
-    ],
-  },
-  {
-    phase: "Phase 2: Hypothesis & Planning",
-    nodes: [
-      { id: "reasoning", label: "reasoning", status: "completed", desc: "Specialist formulated competing hypotheses" },
-      { id: "build_approval", label: "build_approval", status: "completed", desc: "HITL human verification of build specs" },
-      { id: "build_vulnerable", label: "build_vulnerable", status: "completed", desc: "Isolated Docker build: vulnerable snapshot" },
-      { id: "build_fixed", label: "build_fixed", status: "completed", desc: "Isolated Docker build: fixed snapshot" },
-    ],
-  },
-  {
-    phase: "Phase 3: SafePoC Planning & Approval",
-    nodes: [
-      { id: "poc_reasoning", label: "poc_reasoning", status: "active", desc: "Specialist planning bounded SafePoC actions" },
-      { id: "execution_approval", label: "execution_approval", status: "pending", desc: "HITL approval before container execution" },
-    ],
-  },
-  {
-    phase: "Phase 4: Differential Container Execution",
-    nodes: [
-      { id: "run_vulnerable", label: "run_vulnerable", status: "pending", desc: "Execute SafePoC in vulnerable container (net:none)" },
-      { id: "run_fixed", label: "run_fixed", status: "pending", desc: "Execute SafePoC in fixed container (net:none)" },
-      { id: "oracle_eval", label: "oracle_eval", status: "pending", desc: "Evaluate 6 deterministic coverage gates" },
-    ],
-  },
-  {
-    phase: "Phase 5: Skeptic Verification & Proof Bundle",
-    nodes: [
-      { id: "skeptic", label: "skeptic", status: "pending", desc: "Independent audit attempting to falsify candidate" },
-      { id: "proof_pack", label: "proof_pack", status: "pending", desc: "SHA-256 evidence bundle generation" },
-      { id: "final_report", label: "final_report", status: "pending", desc: "Render markdown & JSON verdict report" },
-    ],
-  },
+const WORKFLOW_NODES = [
+  { num: "01", id: "fetch_patch", phase: "ingestion", status: "done", desc: "Parsed diff hunks and modified symbols" },
+  { num: "02", id: "case_init", phase: "ingestion", status: "done", desc: "Initialized case state and isolated workspaces" },
+  { num: "03", id: "slice_source", phase: "ingestion", status: "done", desc: "Extracted pinned source slices and AST bounds" },
+  { num: "04", id: "reasoning", phase: "hypothesis", status: "done", desc: "Patch Analyst formulated competing hypotheses" },
+  { num: "05", id: "build_approval", phase: "hitl", status: "done", desc: "Operator verified container build specifications" },
+  { num: "06", id: "build_vulnerable", phase: "build", status: "done", desc: "Isolated Docker build: vulnerable snapshot" },
+  { num: "07", id: "build_fixed", phase: "build", status: "done", desc: "Isolated Docker build: fixed snapshot" },
+  { num: "08", id: "poc_reasoning", phase: "planning", status: "active", desc: "SafePoC Planner generating bounded observation actions" },
+  { num: "09", id: "execution_approval", phase: "hitl", status: "pending", desc: "Operator clearance before container execution" },
+  { num: "10", id: "run_vulnerable", phase: "execution", status: "pending", desc: "Execute SafePoC in vulnerable container (net:none)" },
+  { num: "11", id: "run_fixed", phase: "execution", status: "pending", desc: "Execute SafePoC in fixed container (net:none)" },
+  { num: "12", id: "oracle_eval", phase: "verdict", status: "pending", desc: "Evaluate 6 deterministic coverage gates" },
+  { num: "13", id: "skeptic", phase: "verdict", status: "pending", desc: "Independent audit attempting to falsify candidate" },
+  { num: "14", id: "proof_pack", phase: "bundle", status: "pending", desc: "SHA-256 evidence bundle generation" },
 ];
 
 export default function PipelinePage() {
-  const [isRunning, setIsRunning] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-      {/* Sub-Header */}
-      <div className="h-10 px-4 border-b border-[var(--border)] bg-[var(--surface-subtle)] flex items-center justify-between shrink-0 select-none">
-        <div className="flex items-center gap-2">
-          <Activity className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-          <span className="text-xs font-medium text-[var(--text-main)] font-mono">
-            Pipeline Execution
-          </span>
-          <span className="text-xs text-[var(--text-subtle)] hidden sm:inline font-mono">
-            / run-2026-1014-canary
-          </span>
+    <main className="flex-1 overflow-y-auto px-10 lg:px-20 py-10 select-text">
+      <div className="max-w-2xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="flex items-baseline justify-between border-b border-[var(--line)] pb-5">
+          <div>
+            <h1 className="text-xl font-medium tracking-tight text-[var(--ink)]">
+              Pipeline Execution
+            </h1>
+            <p className="text-xs text-[var(--ink-secondary)] mt-1">
+              LangGraph state progression across ingestion, reasoning, paired execution, and verification.
+            </p>
+          </div>
+
+          <button
+            onClick={() => setPaused(!paused)}
+            className="px-3 py-1 bg-[var(--ink)] text-[var(--bg)] rounded-[3px] font-mono text-xs hover:opacity-85 transition shrink-0"
+          >
+            {paused ? "Resume" : "Pause"}
+          </button>
         </div>
 
-        <button
-          onClick={() => setIsRunning(!isRunning)}
-          className="btn-tactile h-6 px-2.5 rounded text-xs font-medium bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-text)] shadow-2xs transition flex items-center gap-1 font-sans"
-        >
-          <Play className="w-3 h-3" />
-          <span>{isRunning ? "Pause" : "Resume"}</span>
-        </button>
-      </div>
+        {/* Inline Telemetry Spec */}
+        <div className="grid grid-cols-[120px_1fr] gap-y-1.5 text-xs items-baseline border-b border-[var(--line)] pb-6 font-mono">
+          <span className="text-[11px] text-[var(--ink-tertiary)]">run_id</span>
+          <span className="text-[11px] text-[var(--ink)]">run-2026-1014-canary</span>
 
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
-        {/* Top KPI row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="p-3 rounded-lg bg-[var(--surface-subtle)] border border-[var(--border)] space-y-0.5">
-            <span className="text-[10px] font-mono text-[var(--text-subtle)] uppercase">Current Node</span>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-main)]" />
-              <span className="text-xs font-semibold font-mono text-[var(--text-main)]">poc_reasoning</span>
-            </div>
-          </div>
+          <span className="text-[11px] text-[var(--ink-tertiary)]">active_node</span>
+          <span className="text-[11px] text-[var(--ink)]">08 / poc_reasoning</span>
 
-          <div className="p-3 rounded-lg bg-[var(--surface-subtle)] border border-[var(--border)] space-y-0.5">
-            <span className="text-[10px] font-mono text-[var(--text-subtle)] uppercase">Execution Plane</span>
-            <div className="text-xs font-semibold font-mono text-[var(--text-main)]">Containers Built (net:none)</div>
-          </div>
+          <span className="text-[11px] text-[var(--ink-tertiary)]">containers</span>
+          <span className="text-[11px] text-[var(--ink-secondary)]">vulnerable (9e3f1c), fixed (c821a4) — net:none</span>
 
-          <div className="p-3 rounded-lg bg-[var(--surface-subtle)] border border-[var(--border)] space-y-0.5">
-            <span className="text-[10px] font-mono text-[var(--text-subtle)] uppercase">HITL Gates</span>
-            <div className="text-xs font-semibold font-mono text-[var(--text-main)]">1 Approved, 1 Queued</div>
-          </div>
-
-          <div className="p-3 rounded-lg bg-[var(--surface-subtle)] border border-[var(--border)] space-y-0.5">
-            <span className="text-[10px] font-mono text-[var(--text-subtle)] uppercase">Coverage Gates</span>
-            <div className="text-xs font-semibold font-mono text-[var(--text-main)]">2 / 6 Verified</div>
-          </div>
+          <span className="text-[11px] text-[var(--ink-tertiary)]">gates</span>
+          <span className="text-[11px] text-[var(--ink-secondary)]">2 / 6 verified</span>
         </div>
 
-        {/* Progression Phases */}
-        <div className="space-y-3">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-subtle)] font-mono">
-            Workflow Progression (21 Nodes)
+        {/* Node Table */}
+        <div className="space-y-2">
+          <span className="font-mono text-[10px] text-[var(--ink-tertiary)]">
+            Node Sequence
           </span>
 
-          <div className="space-y-2.5">
-            {WORKFLOW_STAGES.map((phase, pIdx) => (
-              <div
-                key={pIdx}
-                className="p-3.5 rounded-lg bg-[var(--surface-subtle)] border border-[var(--border)] space-y-2"
-              >
-                <span className="text-[11px] font-semibold text-[var(--text-main)] font-mono">
-                  {phase.phase}
-                </span>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {phase.nodes.map((node) => {
-                    const isDone = node.status === "completed";
-                    const isActive = node.status === "active";
-
-                    return (
-                      <div
-                        key={node.id}
-                        className={`p-2.5 rounded border text-xs space-y-0.5 transition ${
-                          isActive
-                            ? "bg-[var(--surface)] border-[var(--text-main)] text-[var(--text-main)] shadow-2xs"
-                            : isDone
-                            ? "bg-[var(--surface)] border-[var(--border)] text-[var(--text-main)]"
-                            : "bg-[var(--surface)] border-[var(--border)] text-[var(--text-subtle)] opacity-50"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-medium text-[11px]">{node.label}</span>
-                          {isDone && <CheckCircle2 className="w-3 h-3 text-[var(--text-muted)]" />}
-                          {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-main)]" />}
-                        </div>
-                        <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{node.desc}</p>
-                      </div>
-                    );
-                  })}
+          <div className="divide-y divide-[var(--line-subtle)] border-t border-[var(--line)]">
+            {WORKFLOW_NODES.map((n) => {
+              const isActive = n.status === "active";
+              const isPending = n.status === "pending";
+              return (
+                <div
+                  key={n.id}
+                  className={`py-2.5 grid grid-cols-[32px_160px_1fr_70px] items-baseline gap-4 text-xs ${
+                    isPending ? "opacity-40" : ""
+                  }`}
+                >
+                  <span className="font-mono text-[10px] text-[var(--ink-tertiary)]">
+                    {n.num}
+                  </span>
+                  <span
+                    className={`font-mono text-xs ${
+                      isActive ? "font-medium text-[var(--ink)]" : "text-[var(--ink)]"
+                    }`}
+                  >
+                    {n.id}
+                  </span>
+                  <span className="text-[var(--ink-secondary)] truncate">
+                    {n.desc}
+                  </span>
+                  <span className="font-mono text-[10px] text-right text-[var(--ink-tertiary)]">
+                    {isActive ? "● active" : n.status}
+                  </span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

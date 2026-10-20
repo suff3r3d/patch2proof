@@ -2,79 +2,86 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Swiss Editorial Paper — Minimalist Daylight Studio */
 :root {
-  --bg: #fafaf9;
+  --bg: #f8f7f4;
   --surface: #ffffff;
-  --surface-subtle: #f5f5f4;
-  --surface-hover: #ebeae7;
-  --border: #e7e5e4;
-  --border-subtle: #f0eeec;
-  --text-main: #1c1917;
-  --text-muted: #78716c;
-  --text-subtle: #a8a29e;
-  --accent: #1c1917;
-  --accent-text: #fafaf9;
-  --accent-hover: #292524;
-  --accent-subtle: rgba(28, 25, 23, 0.06);
-  --accent-border: rgba(28, 25, 23, 0.16);
-  --code-bg: #f5f5f4;
-  --code-gutter: #a8a29e;
-  --nav-bg: #fbfbfa;
+  --ink: #141413;
+  --ink-secondary: #6b6965;
+  --ink-tertiary: #a3a09a;
+  --line: #e6e4dd;
+  --line-subtle: #efede8;
 }
 
-/* Minimalist Monochrome Dark counterpart */
 html.dark {
-  --bg: #0d0d0d;
+  --bg: #0e0e0e;
   --surface: #141414;
-  --surface-subtle: #191919;
-  --surface-hover: #222222;
-  --border: #262626;
-  --border-subtle: #1c1c1c;
-  --text-main: #f5f5f5;
-  --text-muted: #888888;
-  --text-subtle: #525252;
-  --accent: #ffffff;
-  --accent-text: #0d0d0d;
-  --accent-hover: #e5e5e5;
-  --accent-subtle: rgba(255, 255, 255, 0.08);
-  --accent-border: rgba(255, 255, 255, 0.2);
-  --code-bg: #090909;
-  --code-gutter: #404040;
-  --nav-bg: #101010;
+  --ink: #ededec;
+  --ink-secondary: #878682;
+  --ink-tertiary: #52514e;
+  --line: #222220;
+  --line-subtle: #191918;
 }
 
 body {
   background-color: var(--bg);
-  color: var(--text-main);
-  font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
-  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: -0.018em;
   -webkit-font-smoothing: antialiased;
+  margin: 0;
 }
 
-code, pre, textarea.code-font, .font-mono {
+code,
+pre,
+textarea,
+.font-mono {
   font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
-/* Hairline glass panel */
-.glass-panel {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+/* Seamless inputs that look like typography until hovered/focused */
+.spec-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 6px;
+  margin-left: -6px;
+  color: var(--ink);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-html.dark .glass-panel {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+.spec-input:hover {
+  border-color: var(--line);
 }
 
-/* Tactile micro-physics on active state */
-.btn-tactile:active {
-  transform: scale(0.98) translateY(1px);
+.spec-input:focus {
+  outline: none;
+  background: var(--surface);
+  border-color: var(--ink);
 }
 
-/* Custom hairline scrollbars */
+/* Minimalist 1px range slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--line);
+  height: 1px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink);
+  cursor: pointer;
+}
+
+/* Subtle hairline scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -82,10 +89,9 @@ html.dark .glass-panel {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 9999px;
+  background: var(--line);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-subtle);
+  background: var(--ink-tertiary);
 }
