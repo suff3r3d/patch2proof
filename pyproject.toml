@@ -54,6 +54,7 @@ packages = ["src/patch2proof"]
 "templates" = "patch2proof/templates"
 "dacn" = "dacn"
 "schemas" = "schemas"
+"specialists" = "patch2proof/specialists"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -203,8 +203,9 @@ def discover_revisions(
     repository_hint: str | None = None,
     fetcher: Callable[[str], tuple[bytes, dict[str, Any]]] = fetch_json,
     materializer: Callable[[str, str, str, Path], Path] = materialize_github_pair,
+    selector: Callable[[str, list[dict[str, Any]]], int | None] | None = None,
 ) -> DiscoveryOutcome:
-    """Resolve a single tagged GitHub fix or retain candidates for review."""
+    """Collect candidates; optionally use a bounded specialist selection."""
 
     if not CVE_PATTERN.fullmatch(cve_id):
         raise DiscoveryError("Invalid CVE ID")
@@ -223,7 +224,7 @@ def discover_revisions(
             "cveId": cve_id
         })
         osv_url = f"https://api.osv.dev/v1/vulns/{cve_id}"
-        parsed_refs: dict[tuple[str, str, str], tuple[str, bytes, bool]] = {}
+        parsed_refs: dict[tuple[str, str, str], tuple[str, bytes, bool, str]] = {}
         source_error = ""
         for provider, url, filename in (
             ("nvd", nvd_url, "discovery-nvd.json"),
@@ -241,6 +242,12 @@ def discover_revisions(
                     if len(matching) != 1:
                         raise DiscoveryError("NVD returned no unique record for this CVE")
                     references = matching[0].get("references", [])
+                    descriptions = matching[0].get("descriptions", [])
+                    summary = next((
+                        item.get("value", "") for item in descriptions
+                        if isinstance(item, dict) and item.get("lang") == "en"
+                        and isinstance(item.get("value"), str)
+                    ), "") if isinstance(descriptions, list) else ""
                 else:
                     aliases = record.get("aliases", [])
                     if not isinstance(aliases, list):
@@ -248,6 +255,9 @@ def discover_revisions(
                     if record.get("id") != cve_id and cve_id not in aliases:
                         raise DiscoveryError("OSV record does not identify the requested CVE")
                     references = record.get("references", [])
+                    summary = record.get("summary", "")
+                    if not isinstance(summary, str):
+                        summary = ""
                 if not isinstance(references, list):
                     raise DiscoveryError("Malformed CVE reference list")
                 (output_dir / filename).write_bytes(provider_raw)
@@ -294,7 +304,7 @@ def discover_revisions(
                             tagged_fix = reference.get("type") == "FIX" or parsed in fixed_ranges
                         previous = parsed_refs.get(parsed)
                         if previous is None or (tagged_fix and not previous[2]):
-                            parsed_refs[parsed] = (url, provider_raw, tagged_fix)
+                            parsed_refs[parsed] = (url, provider_raw, tagged_fix, summary[:1200])
                 if any(item[2] for item in parsed_refs.values()):
                     break
             except DiscoveryError as exc:
@@ -311,10 +321,13 @@ def discover_revisions(
             reason = "No metadata reference explicitly identifies a fixing commit."
         if len(parsed_refs) > 1:
             reason = "Multiple fixing commit references require review."
-        if len(parsed_refs) > MAX_REFERENCES:
+        too_many_refs = len(parsed_refs) > MAX_REFERENCES
+        if too_many_refs:
             reason = "Too many fixing commit references for automatic selection."
         candidate_errors: list[str] = []
-        for index, ((owner, repo, linked_sha), (source_url, raw, fix_supported)) in enumerate(
+        for index, ((owner, repo, linked_sha), (
+            source_url, raw, fix_supported, summary
+        )) in enumerate(
             list(parsed_refs.items())[:MAX_REFERENCES]
         ):
             repository_url = f"https://github.com/{owner}/{repo}.git"
@@ -339,6 +352,15 @@ def discover_revisions(
                 vulnerable = parents[0].get("sha") if isinstance(parents[0], dict) else None
                 if not isinstance(vulnerable, str) or not SHA_PATTERN.fullmatch(vulnerable):
                     continue
+                commit_data = commit.get("commit", {})
+                message = commit_data.get("message", "") if isinstance(commit_data, dict) else ""
+                if not isinstance(message, str):
+                    message = ""
+                files = commit.get("files", [])
+                filenames = [
+                    item["filename"][:200] for item in files[:30]
+                    if isinstance(item, dict) and isinstance(item.get("filename"), str)
+                ] if isinstance(files, list) else []
                 evidence = [
                     {"kind": "cve_record", "url": source_url, "retrieved_at": timestamp(),
                      "content_sha256": hashlib.sha256(raw).hexdigest()},
@@ -362,7 +384,10 @@ def discover_revisions(
                     "checks": checks,
                     "notes": (
                         "Vulnerable commit is the direct parent of the referenced fix; "
-                        "affected behavior is unproven."
+                        "affected behavior is unproven. "
+                        f"Advisory summary: {summary}. "
+                        f"Commit message: {message[:800]}. "
+                        f"Changed files: {', '.join(filenames)}."
                     ),
                 })
             except DiscoveryError as exc:
@@ -373,8 +398,30 @@ def discover_revisions(
             raise DiscoveryError(
                 "No supported single-parent fixing commit could be resolved." + detail
             )
-        if len(candidates) == 1 and reason is None:
-            candidate = candidates[0]
+        selected_index: int | None = None
+        if selector is not None and not too_many_refs:
+            try:
+                selected_index = selector(cve_id, candidates)
+            except Exception as exc:
+                reason = f"Revision specialist could not select a candidate: {exc}"
+        elif len(candidates) == 1 and reason is None:
+            # Compatibility for direct library callers. The graph supplies a specialist.
+            selected_index = 0
+        if selected_index is not None and (
+            not isinstance(selected_index, int) or isinstance(selected_index, bool)
+            or not 0 <= selected_index < len(candidates)
+        ):
+            reason = "Revision specialist selected an unknown candidate."
+            selected_index = None
+        if selected_index is not None and candidates[selected_index]["checks"][
+            "cve_link_supported"
+        ] != "passed":
+            reason = "Selected commit is not supported as a fixing reference."
+            selected_index = None
+        if selector is not None and selected_index is None and reason is None:
+            reason = "Revision specialist found no justified candidate to select."
+        if selected_index is not None:
+            candidate = candidates[selected_index]
             selected_url = (
                 candidate["repository_url"].removesuffix(".git")
                 + "/commit/" + candidate["fixed_commit"]
@@ -387,9 +434,14 @@ def discover_revisions(
                     owner, repo, candidate["fixed_commit"], output_dir,
                 )
                 selected_repo = ensure_within_root(selected_repo, output_dir)
-                candidate["checks"] = verify_pair(
-                    selected_repo, candidate["vulnerable_commit"], candidate["fixed_commit"]
-                )
+                link_check = candidate["checks"]["cve_link_supported"]
+                candidate["checks"] = {
+                    **verify_pair(
+                        selected_repo, candidate["vulnerable_commit"],
+                        candidate["fixed_commit"],
+                    ),
+                    "cve_link_supported": link_check,
+                }
             except (DiscoveryError, subprocess.TimeoutExpired, OSError) as exc:
                 reason = f"Local Git verification failed: {type(exc).__name__}"
                 selected_repo = None

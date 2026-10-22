@@ -165,7 +165,7 @@ Then set `P2P_LLM_MODE=ollama`, `P2P_OLLAMA_MODEL=<reviewed-model>` and `OLLAMA_
 
 ### Start with a CVE ID
 
-For CVEs whose NVD or OSV record identifies one GitHub fixing commit, the
+For CVEs whose NVD or OSV record identifies GitHub fixing commits, the
 pipeline can discover a candidate source pair before patch ingestion:
 
 ```bash
@@ -173,12 +173,15 @@ uv run p2p inspect CVE-YYYY-NNNN
 uv run p2p run CVE-YYYY-NNNN --dry-run --auto-approve
 ```
 
-Configure a reasoning provider as described above. Discovery itself retrieves
+Configure a reasoning provider as described above. The revision-discovery
+specialist selects from evidence-backed candidates; missing or invalid model
+decisions leave the case unresolved. Discovery retrieves
 public metadata from NVD (with OSV fallback) and GitHub, then fetches the
 referenced fix and its parent into `artifacts/<CVE-ID>/`. The reference must
 identify a patch or fix; an untagged commit link remains a candidate for review.
 The target Docker policy remains `network: none`. Inspect
-`revision-discovery-result.json`, the saved NVD or OSV response, commit
+`revision-discovery-result.json`, `revision-discovery-reasoning.json`, the saved
+NVD or OSV response, commit
 responses, `raw-patch.diff`, and `final-report.md`. Ambiguous or
 unsupported cases stop with `not_executed` and a reason. A discovered parent
 is a pre-fix candidate, not proof of affected behavior. CVE-only runs cannot

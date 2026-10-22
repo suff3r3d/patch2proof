@@ -12,6 +12,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from patch2proof.graph import discovery_node, graph, initial_state, invoke_case, route_discovery
+from patch2proof.llm import (
+    ReasoningConfigurationError,
+    RevisionSelection,
+    select_revision_candidate,
+)
 from patch2proof.revision_discovery import (
     DiscoveryError,
     DiscoveryOutcome,
@@ -96,6 +101,120 @@ class RevisionDiscoveryTests(unittest.TestCase):
         self.assertEqual("ambiguous", outcome.result["status"])
         self.assertNotIn("selected", outcome.result)
 
+    def test_specialist_selection_is_still_subject_to_git_checks(self):
+        calls = []
+        def select(cve_id, candidates):
+            calls.append((cve_id, candidates))
+            return 0
+        def materialize(_owner, _repo, _sha, root):
+            destination = root / "repo"
+            shutil.copytree(self.repo, destination)
+            return destination
+        outcome = discover_revisions(
+            self.cve, self.root / "output", SCHEMAS,
+            fetcher=self.payloads(), materializer=materialize, selector=select,
+        )
+        self.assertEqual("resolved", outcome.result["status"])
+        self.assertEqual(1, len(calls))
+        self.assertEqual(self.cve, calls[0][0])
+        self.assertEqual("passed", outcome.result["selected"]["checks"]["revisions_exist"])
+
+    def test_specialist_refusal_and_invalid_choice_stay_ambiguous(self):
+        for choice in (None, 3):
+            with self.subTest(choice=choice):
+                outcome = discover_revisions(
+                    self.cve, self.root / f"output-{choice}", SCHEMAS,
+                    fetcher=self.payloads(),
+                    selector=lambda _cve, _candidates, selected=choice: selected,
+                    materializer=lambda *_: self.fail("must not fetch repository"),
+                )
+                self.assertEqual("ambiguous", outcome.result["status"])
+                self.assertNotIn("selected", outcome.result)
+
+    def test_specialist_cannot_promote_untagged_reference(self):
+        base_fetch = self.payloads()
+        def fetch(url):
+            raw, value = base_fetch(url)
+            if "nvd.nist.gov" in url:
+                value["vulnerabilities"][0]["cve"]["references"][0].pop("tags")
+                raw = json.dumps(value).encode()
+            if "api.osv.dev" in url:
+                value = {"id": self.cve, "references": []}
+                raw = json.dumps(value).encode()
+            return raw, value
+        outcome = discover_revisions(
+            self.cve, self.root / "output", SCHEMAS,
+            fetcher=fetch, selector=lambda _cve, _candidates: 0,
+            materializer=lambda *_: self.fail("must not fetch repository"),
+        )
+        self.assertEqual("ambiguous", outcome.result["status"])
+
+    def test_specialist_can_select_second_supported_fix(self):
+        (self.repo / "code.py").write_text("vulnerable = False\nextra = True\n", encoding="utf-8")
+        git(self.repo, "commit", "-qam", "Follow-up fix")
+        later_fix = git(self.repo, "rev-parse", "HEAD")
+        nvd = {"vulnerabilities": [{"cve": {
+            "id": self.cve,
+            "descriptions": [{"lang": "en", "value": "Two related patch commits"}],
+            "references": [
+                {"url": self.commit_url, "tags": ["Patch"]},
+                {"url": f"https://github.com/acme/project/commit/{later_fix}",
+                 "tags": ["Patch"]},
+            ],
+        }}]}
+        def fetch(url):
+            if "nvd.nist.gov" in url:
+                value = nvd
+            else:
+                sha = url.rsplit("/", 1)[-1]
+                value = {
+                    "sha": sha,
+                    "html_url": f"https://github.com/acme/project/commit/{sha}",
+                    "parents": [{"sha": self.fixed if sha == later_fix else self.vulnerable}],
+                    "commit": {"message": "Follow-up fix" if sha == later_fix else "First fix"},
+                    "files": [{"filename": "code.py"}],
+                }
+            return json.dumps(value).encode(), value
+        def materialize(_owner, _repo, _sha, root):
+            destination = root / "repo"
+            shutil.copytree(self.repo, destination)
+            return destination
+        outcome = discover_revisions(
+            self.cve, self.root / "output", SCHEMAS,
+            fetcher=fetch, materializer=materialize,
+            selector=lambda _cve, candidates: 1 if len(candidates) == 2 else None,
+        )
+        self.assertEqual("resolved", outcome.result["status"])
+        self.assertEqual(later_fix, outcome.result["selected"]["fixed_commit"])
+        self.assertEqual(self.fixed, outcome.result["selected"]["vulnerable_commit"])
+
+    def test_model_selection_validates_cited_evidence(self):
+        candidate = {
+            "checks": {"cve_link_supported": "passed"},
+            "evidence": [{"kind": "cve_record"}],
+        }
+        with patch("patch2proof.llm._invoke_structured", return_value=(
+            RevisionSelection(candidate_index=0, rationale="Tagged fix", evidence_indices=[0]),
+            "openai",
+        )):
+            choice, record = select_revision_candidate(
+                self.cve, [candidate], mode="openai", model_name="test-model",
+            )
+        self.assertEqual(0, choice.candidate_index)
+        self.assertEqual("revision-discovery", record["specialist"])
+        self.assertEqual("openai", record["provider"])
+        self.assertEqual(64, len(record["input_sha256"]))
+        with patch("patch2proof.llm._invoke_structured", return_value=(
+            RevisionSelection(candidate_index=0, rationale="Unsupported", evidence_indices=[1]),
+            "openai",
+        )):
+            with self.assertRaisesRegex(ReasoningConfigurationError, "invalid evidence"):
+                select_revision_candidate(
+                    self.cve, [candidate], mode="openai", model_name="test-model",
+                )
+        with self.assertRaisesRegex(ReasoningConfigurationError, "No reasoning provider"):
+            select_revision_candidate(self.cve, [candidate], mode="required")
+
     def test_osv_fallback_when_nvd_is_unavailable(self):
         base_fetch = self.payloads()
         def fetch(url):
@@ -177,6 +296,35 @@ class RevisionDiscoveryTests(unittest.TestCase):
         self.assertEqual("ingest", route_discovery(updated))
         self.assertEqual(self.vulnerable, updated["case"]["vulnerable_ref"])
         self.assertEqual(self.fixed, updated["case"]["fixed_ref"])
+
+    def test_graph_loads_specialist_selection_and_records_decision(self):
+        state = initial_state(self.cve)
+        state["case"]["output_dir"] = str(self.root)
+        state["case"]["policy"]["allowed_repo_root"] = str(self.root)
+        candidate = {
+            "repository_url": "https://github.com/acme/project.git",
+            "vulnerable_commit": self.vulnerable,
+            "fixed_commit": self.fixed,
+            "checks": {"cve_link_supported": "passed"},
+            "evidence": [{"kind": "cve_record"}],
+        }
+        def discover(_cve, _output, _schemas, *, repository_hint, selector):
+            self.assertIsNone(repository_hint)
+            self.assertEqual(0, selector(self.cve, [candidate]))
+            return DiscoveryOutcome(
+                {"request": {"cve_id": self.cve}, "status": "ambiguous",
+                 "candidates": [candidate], "failure_reason": "fixture stop"},
+                None, (),
+            )
+        with patch("patch2proof.graph.select_revision_candidate", return_value=(
+            RevisionSelection(candidate_index=0, rationale="Supported", evidence_indices=[0]),
+            {"provider": "openai", "decision": {"candidate_index": 0}},
+        )) as specialist:
+            with patch("patch2proof.graph.discover_revisions", side_effect=discover):
+                updated = discovery_node(state)
+        specialist.assert_called_once()
+        self.assertIn("revision-discovery-reasoning.json", updated["discovery_artifacts"])
+        self.assertTrue((self.root / self.cve / "revision-discovery-reasoning.json").exists())
 
     def test_unresolved_cve_run_writes_candidate_report_without_ingestion(self):
         result = {

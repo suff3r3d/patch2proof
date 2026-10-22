@@ -64,7 +64,8 @@ def build_proof_bundle(state: Mapping[str, Any], *, output_dir: Path) -> dict[st
     artifact_names.extend(name for name in state.get("discovery_artifacts", [])
                           if isinstance(name, str) and (
                               name in {"discovery-nvd.json", "discovery-osv.json",
-                                       "revision-discovery-result.json"}
+                                       "revision-discovery-result.json",
+                                       "revision-discovery-reasoning.json"}
                               or name in {f"discovery-commit-{index}.json" for index in range(8)}
                           ))
     state_artifacts = {

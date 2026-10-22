@@ -29,12 +29,20 @@ The current implementation accepts a CVE ID directly through `p2p run`. It
 retrieves the matching NVD record, falls back to OSV when needed, and accepts
 direct GitHub commit references. It checks each referenced commit through the
 GitHub API, then fetches a single
-unambiguous fix and its parent into a case-scoped Git repository. It verifies
+candidate selected by the revision-discovery specialist and its parent into a
+case-scoped Git repository. The specialist receives bounded advisory and commit
+summaries, chooses only from collected candidate indices, and records its
+provider, model, skill hash, input hash, rationale, cited evidence indices, and
+uncertainty in `revision-discovery-reasoning.json`. An absent provider or invalid
+choice leaves the case ambiguous; the graph does not silently use a heuristic.
+It verifies
 the local commits, direct-parent relation, and nonempty diff before ingestion.
-Automatic selection requires an NVD `Patch` tag, OSV `FIX` type, or Git range
+Selection requires an NVD `Patch` tag, OSV `FIX` type, or Git range
 `fixed` event. An untagged commit link remains a candidate for review.
 Multiple fix references, merge commits, unsupported hosts, missing evidence,
-or failed checks remain unresolved. A resolved pair is still not proof that
+or failed checks may remain unresolved. The specialist can choose among supported
+multiple candidates, but only local checks can promote the selected pair to
+`resolved`. A resolved pair is still not proof that
 the parent is vulnerable; runtime reproduction remains a separate stage.
 
 CVE-only runs are dry-run only. A reviewed case manifest with build settings,

@@ -34,6 +34,7 @@ from .llm import (
     reason_about_patch,
     reason_about_repair,
     reason_about_safe_poc,
+    select_revision_candidate,
 )
 from .models import (
     AttemptRecord,
@@ -180,12 +181,23 @@ def route_preflight(state: ResearchState) -> Literal["discovery", "ingest", "blo
 def discovery_node(state: ResearchState) -> ResearchState:
     request = state["discovery_request"]
     case = _case(state)
+    specialist_artifacts: list[str] = []
+
+    def select(cve_id: str, candidates: list[dict[str, Any]]) -> int | None:
+        decision, record = select_revision_candidate(
+            cve_id, candidates, **_reasoning_settings(state),
+        )
+        write_json(_out(state) / "revision-discovery-reasoning.json", record)
+        specialist_artifacts.append("revision-discovery-reasoning.json")
+        return decision.candidate_index
+
     outcome = discover_revisions(
         request["cve_id"], _out(state), _schema_root(),
         repository_hint=request.get("repository_hint"),
+        selector=select,
     )
     write_json(_out(state) / "revision-discovery-result.json", outcome.result)
-    artifacts = [*outcome.artifacts, "revision-discovery-result.json"]
+    artifacts = [*outcome.artifacts, *specialist_artifacts, "revision-discovery-result.json"]
     if outcome.result["status"] != "resolved" or outcome.repository_path is None:
         return {
             "phase": "discovery", "status": "unresolved",

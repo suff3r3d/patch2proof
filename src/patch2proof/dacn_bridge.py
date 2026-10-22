@@ -52,7 +52,8 @@ def _artifact_names(state: Mapping[str, Any]) -> list[str]:
     names.extend(name for name in state.get("discovery_artifacts", [])
                  if isinstance(name, str) and (
                      name in {"discovery-nvd.json", "discovery-osv.json",
-                              "revision-discovery-result.json"}
+                              "revision-discovery-result.json",
+                              "revision-discovery-reasoning.json"}
                      or name in {f"discovery-commit-{index}.json" for index in range(8)}
                  ))
     for key, filename in (
