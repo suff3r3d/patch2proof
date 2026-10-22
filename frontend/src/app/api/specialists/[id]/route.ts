@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSpecialistById, saveSpecialist, deleteSpecialist } from "@/lib/specialists";
+import {
+  getSpecialistById,
+  saveSpecialist,
+  deleteSpecialist,
+  getCaseTracesForSpecialist,
+} from "@/lib/specialists";
 
 interface RouteParams {
   params: {
@@ -16,7 +21,9 @@ export async function GET(request: Request, { params }: RouteParams) {
         { status: 404 }
       );
     }
-    return NextResponse.json({ success: true, specialist });
+
+    const traces = getCaseTracesForSpecialist(params.id);
+    return NextResponse.json({ success: true, specialist, traces });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error.message || "Failed to fetch specialist" },
@@ -36,24 +43,36 @@ export async function PUT(request: Request, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { name, role, stage, model, temperature, tags, systemPrompt } = body;
+    const { name, description, role, stage, model, temperature, tags, systemPrompt } = body;
 
-    const updated = {
-      ...existing,
+    const updated = saveSpecialist({
+      id: existing.id,
       name: name !== undefined ? name.trim() : existing.name,
-      role: role !== undefined ? role.trim() : existing.role,
+      description:
+        description !== undefined
+          ? description.trim()
+          : role !== undefined
+          ? role.trim()
+          : existing.description,
+      role:
+        role !== undefined
+          ? role.trim()
+          : description !== undefined
+          ? description.trim()
+          : existing.role,
       stage: stage !== undefined ? stage.trim() : existing.stage,
       model: model !== undefined ? model.trim() : existing.model,
       temperature: typeof temperature === "number" ? temperature : existing.temperature,
       tags: Array.isArray(tags)
         ? tags
         : typeof tags === "string"
-        ? tags.split(",").map((t: string) => t.trim()).filter(Boolean)
+        ? tags
+            .split(",")
+            .map((t: string) => t.trim())
+            .filter(Boolean)
         : existing.tags,
       systemPrompt: systemPrompt !== undefined ? systemPrompt : existing.systemPrompt,
-    };
-
-    saveSpecialist(updated);
+    });
 
     return NextResponse.json({ success: true, specialist: updated });
   } catch (error: any) {
