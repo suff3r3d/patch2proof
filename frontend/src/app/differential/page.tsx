@@ -1,59 +1,140 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { useActiveCaseId } from "@/lib/activeCaseClient";
 
 export default function DifferentialPage() {
+  const [activeCaseId] = useActiveCaseId();
+  const [caseRecord, setCaseRecord] = useState<any | null>(null);
+  const [bundle, setBundle] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    fetch(`/api/cases/${encodeURIComponent(activeCaseId)}?bundle=1`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          setCaseRecord(d.caseRecord);
+          setBundle(d.bundle || {});
+        }
+      })
+      .catch(() => {});
+  }, [activeCaseId]);
+
+  const validation = bundle["validation.json"] || null;
+  const safePoc = bundle["safepoc.json"] || bundle["safe-poc-plan.json"] || null;
+  const feedback = bundle["feedback-attempt-1.json"] || null;
+
   return (
-    <main className="flex-1 overflow-y-auto px-10 lg:px-20 py-10 select-text">
+    <main className="flex-1 overflow-y-auto px-10 lg:px-16 py-10 select-text">
       <div className="max-w-3xl mx-auto space-y-8">
-        <div className="border-b border-[var(--line)] pb-5">
-          <h1 className="text-xl font-medium tracking-tight text-[var(--ink)]">
-            Differential Observation
-          </h1>
-          <p className="text-xs text-[var(--ink-secondary)] mt-1">
-            Paired container execution output comparing vulnerable and fixed revisions under identical SafePoC input.
-          </p>
+        <div className="flex items-baseline justify-between border-b border-[var(--line)] pb-5">
+          <div>
+            <h1 className="text-xl font-medium tracking-tight text-[var(--ink)]">
+              Differential Observation
+            </h1>
+            <p className="text-xs text-[var(--ink-secondary)] mt-1">
+              Paired vulnerable vs. fixed container expectations and runtime validation for{" "}
+              <span className="font-mono text-[var(--ink)]">{activeCaseId}</span>.
+            </p>
+          </div>
+          <span className="font-mono text-xs text-[var(--ink-tertiary)]">
+            {validation?.status || "not_executed"}
+          </span>
         </div>
 
-        <div className="grid grid-cols-[120px_1fr] gap-y-1.5 text-xs items-baseline border-b border-[var(--line)] pb-6 font-mono">
-          <span className="text-[11px] text-[var(--ink-tertiary)]">contrast</span>
-          <span className="text-[11px] text-[var(--ink)]">confirmed differential signal</span>
+        <div className="grid grid-cols-[130px_1fr] gap-y-1.5 text-xs items-baseline border-b border-[var(--line)] pb-6 font-mono">
+          <span className="text-[11px] text-[var(--ink-tertiary)]">
+            validation
+          </span>
+          <span className="text-[11px] text-[var(--ink)]">
+            status: {validation?.status || "none"} · differential:{" "}
+            {String(validation?.differential ?? false)} · oracle_match:{" "}
+            {String(validation?.oracle_match ?? false)}
+          </span>
 
-          <span className="text-[11px] text-[var(--ink-tertiary)]">vulnerable</span>
-          <span className="text-[11px] text-[var(--ink-secondary)]">rev 9e3f1c • exit 0 • canary read</span>
+          <span className="text-[11px] text-[var(--ink-tertiary)]">
+            vulnerable_ref
+          </span>
+          <span className="text-[11px] text-[var(--ink-secondary)]">
+            {caseRecord?.vulnerable_ref || "—"}
+          </span>
 
-          <span className="text-[11px] text-[var(--ink-tertiary)]">fixed</span>
-          <span className="text-[11px] text-[var(--ink-secondary)]">rev c821a4 • exit 1 • 403 forbidden</span>
+          <span className="text-[11px] text-[var(--ink-tertiary)]">
+            fixed_ref
+          </span>
+          <span className="text-[11px] text-[var(--ink-secondary)]">
+            {caseRecord?.fixed_ref || "—"}
+          </span>
+
+          {feedback?.failure_class && (
+            <>
+              <span className="text-[11px] text-[var(--ink-tertiary)]">
+                diagnosis
+              </span>
+              <span className="text-[11px] text-[var(--ink)]">
+                {feedback.failure_class}: {feedback.summary}
+              </span>
+            </>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 divide-y md:divide-y-0 md:divide-x divide-[var(--line)]">
-          <div className="space-y-3">
-            <span className="font-mono text-[10px] text-[var(--ink-tertiary)]">
-              01 / Vulnerable Container (9e3f1c)
-            </span>
-            <pre className="font-mono text-xs text-[var(--ink)] leading-6 whitespace-pre-wrap">
-{`[INIT] /repos/target-case (ro)
-[NET]  none (loopback)
-[REQ]  GET /api/v1/download?file=../../proof/canary.txt
-[RES]  200 OK (32 bytes)
-[OBS]  "CANARY-9381-VERIFIED"
-[OUT]  state transition observed`}
-            </pre>
+        <div className="border border-[var(--line)] bg-[var(--surface)] rounded-[2px] divide-y divide-[var(--line-subtle)]">
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[var(--line-subtle)]">
+            <div className="p-6 space-y-3">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--ink-tertiary)]">
+                01 · Vulnerable Container
+              </span>
+              <div className="font-mono text-[11px] text-[var(--ink-secondary)]">
+                Expected:
+              </div>
+              <pre className="font-mono text-xs text-[var(--ink)] leading-relaxed overflow-x-auto">
+                {JSON.stringify(
+                  safePoc?.vulnerable_expectation || {},
+                  null,
+                  2
+                )}
+              </pre>
+              <div className="font-mono text-[11px] text-[var(--ink-secondary)] pt-2">
+                Observed:
+              </div>
+              <pre className="font-mono text-xs text-[var(--ink)] leading-relaxed overflow-x-auto">
+                {JSON.stringify(
+                  validation?.vulnerable_observation || {},
+                  null,
+                  2
+                )}
+              </pre>
+            </div>
+
+            <div className="p-6 space-y-3">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--ink-tertiary)]">
+                02 · Fixed Container
+              </span>
+              <div className="font-mono text-[11px] text-[var(--ink-secondary)]">
+                Expected:
+              </div>
+              <pre className="font-mono text-xs text-[var(--ink)] leading-relaxed overflow-x-auto">
+                {JSON.stringify(safePoc?.fixed_expectation || {}, null, 2)}
+              </pre>
+              <div className="font-mono text-[11px] text-[var(--ink-secondary)] pt-2">
+                Observed:
+              </div>
+              <pre className="font-mono text-xs text-[var(--ink)] leading-relaxed overflow-x-auto">
+                {JSON.stringify(validation?.fixed_observation || {}, null, 2)}
+              </pre>
+            </div>
           </div>
 
-          <div className="space-y-3 md:pl-8 pt-6 md:pt-0">
-            <span className="font-mono text-[10px] text-[var(--ink-tertiary)]">
-              02 / Fixed Container (c821a4)
-            </span>
-            <pre className="font-mono text-xs text-[var(--ink)] leading-6 whitespace-pre-wrap">
-{`[INIT] /repos/target-case (ro)
-[NET]  none (loopback)
-[REQ]  GET /api/v1/download?file=../../proof/canary.txt
-[LOG]  sanitize_path: rejected '../'
-[RES]  403 Forbidden
-[OUT]  canary unreached`}
-            </pre>
-          </div>
+          {validation?.logs?.length > 0 && (
+            <div className="p-6 space-y-2">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--ink-tertiary)]">
+                Execution & Adapter Logs
+              </span>
+              <pre className="font-mono text-xs text-[var(--ink-secondary)] leading-relaxed whitespace-pre-wrap">
+                {validation.logs.join("\n")}
+              </pre>
+            </div>
+          )}
         </div>
       </div>
     </main>

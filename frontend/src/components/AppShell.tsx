@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useActiveCaseId } from "@/lib/activeCaseClient";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -11,7 +12,7 @@ interface AppShellProps {
 const NAV_ITEMS = [
   { num: "01", label: "Pipeline", href: "/pipeline" },
   { num: "02", label: "Reproduction Graph", href: "/dag" },
-  { num: "03", label: "Approvals", href: "/approvals", count: "1" },
+  { num: "03", label: "Approvals", href: "/approvals" },
   { num: "04", label: "Differential", href: "/differential" },
   { num: "05", label: "Cases", href: "/cases" },
   { num: "06", label: "Specialists", href: "/specialists" },
@@ -21,6 +22,10 @@ const NAV_ITEMS = [
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const [isDark, setIsDark] = useState(false);
+  const [activeCaseId, setActiveCaseId] = useActiveCaseId();
+  const [caseList, setCaseList] = useState<
+    { id: string; gatesPassed: number; gatesTotal: number; claimStatus: string }[]
+  >([]);
 
   useEffect(() => {
     if (isDark) {
@@ -31,6 +36,19 @@ export function AppShell({ children }: AppShellProps) {
       document.documentElement.classList.add("light");
     }
   }, [isDark]);
+
+  useEffect(() => {
+    fetch("/api/cases")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && Array.isArray(d.cases)) {
+          setCaseList(d.cases);
+        }
+      })
+      .catch(() => {});
+  }, [activeCaseId]);
+
+  const activeCaseMeta = caseList.find((c) => c.id === activeCaseId);
 
   return (
     <div className="h-[100dvh] flex overflow-hidden bg-[var(--bg)] text-[var(--ink)] select-none">
@@ -47,10 +65,42 @@ export function AppShell({ children }: AppShellProps) {
             </span>
           </Link>
 
+          {/* Active Case Context Selector */}
+          <div className="space-y-1.5 pb-4 border-b border-[var(--line-subtle)]">
+            <span className="font-mono text-[10px] text-[var(--ink-tertiary)] uppercase tracking-wider block">
+              Active Case
+            </span>
+            {caseList.length > 0 ? (
+              <select
+                value={activeCaseId}
+                onChange={(e) => setActiveCaseId(e.target.value)}
+                className="w-full bg-transparent font-mono text-[11px] text-[var(--ink)] focus:outline-none cursor-pointer truncate"
+              >
+                {caseList.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.id}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="font-mono text-[11px] text-[var(--ink)] truncate">
+                {activeCaseId}
+              </div>
+            )}
+            {activeCaseMeta && (
+              <div className="font-mono text-[10px] text-[var(--ink-tertiary)] flex justify-between">
+                <span>{activeCaseMeta.claimStatus}</span>
+                <span>
+                  {activeCaseMeta.gatesPassed}/{activeCaseMeta.gatesTotal} gates
+                </span>
+              </div>
+            )}
+          </div>
+
           {/* Numbered Index Navigation */}
           <nav className="space-y-1">
             <div className="pb-2">
-              <span className="font-mono text-[10px] text-[var(--ink-tertiary)]">
+              <span className="font-mono text-[10px] text-[var(--ink-tertiary)] uppercase tracking-wider">
                 Index
               </span>
             </div>
@@ -81,11 +131,6 @@ export function AppShell({ children }: AppShellProps) {
                     {item.num}
                   </span>
                   <span className="truncate">{item.label}</span>
-                  {item.count && (
-                    <span className="ml-auto font-mono text-[10px] text-[var(--ink)]">
-                      {item.count}
-                    </span>
-                  )}
                 </Link>
               );
             })}
@@ -96,7 +141,7 @@ export function AppShell({ children }: AppShellProps) {
         <div className="space-y-3 pt-4 border-t border-[var(--line-subtle)] font-mono text-[10px] text-[var(--ink-tertiary)]">
           <div className="flex justify-between">
             <span>net:none</span>
-            <span>6/6 gates</span>
+            <span>fail-closed</span>
           </div>
           <button
             onClick={() => setIsDark(!isDark)}
